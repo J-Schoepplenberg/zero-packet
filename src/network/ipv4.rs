@@ -1,6 +1,5 @@
-use core::fmt;
-
 use super::checksum::internet_checksum;
+use core::fmt;
 
 /// Represents an IPv4 packet.
 pub struct IPv4Packet<'a> {
@@ -250,35 +249,35 @@ mod tests {
         let protocol = 0x06;
 
         // Create a new IPv4 packet from the raw data.
-        let mut ipv4_packet = IPv4Packet::new(&mut data).unwrap();
+        let mut ipv4 = IPv4Packet::new(&mut data).unwrap();
 
         // Set the fields.
-        ipv4_packet.set_version(version);
-        ipv4_packet.set_ihl(ihl);
-        ipv4_packet.set_dscp(dscp);
-        ipv4_packet.set_ecn(ecn);
-        ipv4_packet.set_total_length(total_length);
-        ipv4_packet.set_identification(identification);
-        ipv4_packet.set_flags(flags);
-        ipv4_packet.set_fragment_offset(fragment_offset);
-        ipv4_packet.set_ttl(ttl);
-        ipv4_packet.set_protocol(protocol);
-        ipv4_packet.set_src_ip(&src_ip);
-        ipv4_packet.set_dest_ip(&dest_ip);
-        ipv4_packet.set_checksum();
+        ipv4.set_version(version);
+        ipv4.set_ihl(ihl);
+        ipv4.set_dscp(dscp);
+        ipv4.set_ecn(ecn);
+        ipv4.set_total_length(total_length);
+        ipv4.set_identification(identification);
+        ipv4.set_flags(flags);
+        ipv4.set_fragment_offset(fragment_offset);
+        ipv4.set_ttl(ttl);
+        ipv4.set_protocol(protocol);
+        ipv4.set_src_ip(&src_ip);
+        ipv4.set_dest_ip(&dest_ip);
+        ipv4.set_checksum();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(ipv4_packet.get_version(), version);
-        assert_eq!(ipv4_packet.get_ihl(), ihl);
-        assert_eq!(ipv4_packet.get_dscp(), dscp);
-        assert_eq!(ipv4_packet.get_ecn(), ecn);
-        assert_eq!(ipv4_packet.get_total_length(), total_length);
-        assert_eq!(ipv4_packet.get_identification(), identification);
-        assert_eq!(ipv4_packet.get_flags(), flags);
-        assert_eq!(ipv4_packet.get_fragment_offset(), fragment_offset);
-        assert_eq!(ipv4_packet.get_ttl(), ttl);
-        assert_eq!(ipv4_packet.get_protocol(), protocol);
-        assert_eq!(ipv4_packet.get_src_ip(), src_ip);
-        assert_eq!(ipv4_packet.get_dest_ip(), dest_ip);
+        assert_eq!(ipv4.get_version(), version);
+        assert_eq!(ipv4.get_ihl(), ihl);
+        assert_eq!(ipv4.get_dscp(), dscp);
+        assert_eq!(ipv4.get_ecn(), ecn);
+        assert_eq!(ipv4.get_total_length(), total_length);
+        assert_eq!(ipv4.get_identification(), identification);
+        assert_eq!(ipv4.get_flags(), flags);
+        assert_eq!(ipv4.get_fragment_offset(), fragment_offset);
+        assert_eq!(ipv4.get_ttl(), ttl);
+        assert_eq!(ipv4.get_protocol(), protocol);
+        assert_eq!(ipv4.get_src_ip(), src_ip);
+        assert_eq!(ipv4.get_dest_ip(), dest_ip);
     }
 }

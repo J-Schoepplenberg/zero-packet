@@ -1,31 +1,58 @@
 use crate::{
-    datalink::{arp::Arp, ethernet::EthernetFrame},
-    network::ipv4::IPv4Packet,
+    datalink::{arp::ArpPacket, ethernet::EthernetFrame},
+    network::{icmp::IcmpPacket, ipv4::IPv4Packet},
     transport::{tcp::TcpSegment, udp::UdpDatagram},
 };
 
+/// A zero-allocation packet builder.
 pub struct PacketBuilder<'a> {
     pub data: &'a mut [u8],
-    pos: usize,
+    position: usize,
 }
 
 impl<'a> PacketBuilder<'a> {
     /// Creates a new `PacketBuilder` from the given data slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> PacketBuilder<'a> {
-        PacketBuilder { data, pos: 0 }
+        PacketBuilder { data, position: 0 }
     }
 
     #[inline]
     /// Returns the length of all encapsulated headers in bytes.
     pub fn total_header_length(&self) -> usize {
-        self.pos
+        self.position
     }
 
     /// Returns the length of the payload in bytes.
+    ///
+    /// Should be called after all headers have been set.
     #[inline]
     pub fn payload_length(&self) -> usize {
-        self.data.len() - self.pos
+        self.data.len() - self.position
+    }
+
+    /// Returns the payload.
+    ///
+    /// Should be called after all headers have been set.
+    #[inline]
+    pub fn get_payload(&self) -> &[u8] {
+        &self.data[self.position..]
+    }
+
+    /// Sets the payload.
+    ///
+    /// Should be called after all headers have been set.
+    ///
+    /// Fails if the payload is too large to fit in the remaining data slice.
+    #[inline]
+    pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
+        if self.data.len() - self.position < payload.len() {
+            return Err("Data too short to contain the payload.");
+        }
+
+        self.data[self.position..self.position + payload.len()].copy_from_slice(payload);
+
+        Ok(())
     }
 
     /// Sets Ethernet header fields.
@@ -44,7 +71,7 @@ impl<'a> PacketBuilder<'a> {
         ethernet_frame.set_dest_mac(dest_mac);
         ethernet_frame.set_ethertype(ethertype);
 
-        self.pos = EthernetFrame::HEADER_LENGTH;
+        self.position = EthernetFrame::HEADER_LENGTH;
 
         Ok(self)
     }
@@ -66,11 +93,11 @@ impl<'a> PacketBuilder<'a> {
         dest_mac: &[u8; 6],
         dest_ip: &[u8; 4],
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.pos {
+        if self.data.len() < self.position {
             return Err("Data too short to contain an ARP header.");
         }
 
-        let mut arp_packet = Arp::new(&mut self.data[self.pos..])?;
+        let mut arp_packet = ArpPacket::new(&mut self.data[self.position..])?;
 
         arp_packet.set_htype(hardware_type);
         arp_packet.set_ptype(protocol_type);
@@ -82,7 +109,7 @@ impl<'a> PacketBuilder<'a> {
         arp_packet.set_tha(dest_mac);
         arp_packet.set_tpa(dest_ip);
 
-        self.pos += arp_packet.header_length();
+        self.position += arp_packet.header_length();
 
         Ok(self)
     }
@@ -107,11 +134,11 @@ impl<'a> PacketBuilder<'a> {
         src_ip: &[u8; 4],
         dest_ip: &[u8; 4],
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.pos {
+        if self.data.len() < self.position {
             return Err("Data too short to contain an IPv4 header.");
         }
 
-        let mut ipv4_packet = IPv4Packet::new(&mut self.data[self.pos..])?;
+        let mut ipv4_packet = IPv4Packet::new(&mut self.data[self.position..])?;
 
         ipv4_packet.set_version(version);
         ipv4_packet.set_ihl(ihl);
@@ -127,7 +154,7 @@ impl<'a> PacketBuilder<'a> {
         ipv4_packet.set_dest_ip(dest_ip);
         ipv4_packet.set_checksum();
 
-        self.pos += ipv4_packet.header_length();
+        self.position += ipv4_packet.header_length();
 
         Ok(self)
     }
@@ -151,11 +178,11 @@ impl<'a> PacketBuilder<'a> {
         window_size: u16,
         urgent_pointer: u16,
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.pos {
+        if self.data.len() < self.position {
             return Err("Data too short to contain a TCP segment.");
         }
 
-        let mut tcp_packet = TcpSegment::new(&mut self.data[self.pos..])?;
+        let mut tcp_packet = TcpSegment::new(&mut self.data[self.position..])?;
 
         tcp_packet.set_src_port(src_port);
         tcp_packet.set_dest_port(dest_port);
@@ -166,9 +193,9 @@ impl<'a> PacketBuilder<'a> {
         tcp_packet.set_flags(flags);
         tcp_packet.set_window_size(window_size);
         tcp_packet.set_urgent_pointer(urgent_pointer);
-        tcp_packet.set_checksum(&src_ip, &dest_ip);
+        tcp_packet.set_checksum(src_ip, dest_ip);
 
-        self.pos += tcp_packet.header_length();
+        self.position += tcp_packet.header_length();
 
         Ok(self)
     }
@@ -186,18 +213,39 @@ impl<'a> PacketBuilder<'a> {
         dest_port: u16,
         length: u16,
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.pos {
+        if self.data.len() < self.position {
             return Err("Data too short to contain a UDP datagram.");
         }
 
-        let mut udp_packet = UdpDatagram::new(&mut self.data[self.pos..])?;
+        let mut udp_packet = UdpDatagram::new(&mut self.data[self.position..])?;
 
         udp_packet.set_src_port(src_port);
         udp_packet.set_dest_port(dest_port);
         udp_packet.set_length(length);
-        udp_packet.set_checksum(&src_ip, &dest_ip);
+        udp_packet.set_checksum(src_ip, dest_ip);
 
-        self.pos += udp_packet.header_length();
+        self.position += udp_packet.header_length();
+
+        Ok(self)
+    }
+
+    /// Sets ICMP header fields.
+    ///
+    /// Should be encapsulated in an IPv4 or IPv6 packet.
+    /// Therefore, should be called after `ipv4` or `ipv6`.
+    #[inline]
+    pub fn icmp(&mut self, icmp_type: u8, icmp_code: u8) -> Result<&mut Self, &'static str> {
+        if self.data.len() < self.position {
+            return Err("Data too short to contain an ICMP packet.");
+        }
+
+        let mut icmp_packet = IcmpPacket::new(&mut self.data[self.position..])?;
+
+        icmp_packet.set_type(icmp_type);
+        icmp_packet.set_code(icmp_code);
+        icmp_packet.set_checksum();
+
+        self.position += icmp_packet.header_length();
 
         Ok(self)
     }
@@ -215,20 +263,6 @@ mod tests {
         // Packet builder.
         let mut packet_builder = PacketBuilder::new(&mut packet);
 
-        // Random values for the fields.
-        let src_mac = [0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f];
-        let dest_mac = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
-        let ethertype = 2054;
-        let hardware_type = 1;
-        let protocol_type = 2048;
-        let hardware_address_length = 6;
-        let protocol_address_length = 4;
-        let operation = 1;
-        let src_mac_arp = [0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f];
-        let src_ip = [192, 168, 1, 1];
-        let dest_mac_arp = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        let dest_ip = [192, 168, 1, 2];
-
         // Expected output given the chosen values.
         let should_be = [
             255, 255, 255, 255, 255, 255, 52, 151, 246, 148, 2, 15, 8, 6, 0, 1, 8, 0, 6, 4, 0, 1,
@@ -239,18 +273,22 @@ mod tests {
         let allocations = allocation_counter::measure(|| {
             // Build the packet.
             packet_builder
-                .ethernet(&src_mac, &dest_mac, ethertype)
+                .ethernet(
+                    &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                    &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+                    2054,
+                )
                 .unwrap()
                 .arp(
-                    hardware_type,
-                    protocol_type,
-                    hardware_address_length,
-                    protocol_address_length,
-                    operation,
-                    &src_mac_arp,
-                    &src_ip,
-                    &dest_mac_arp,
-                    &dest_ip,
+                    1,
+                    2048,
+                    6,
+                    4,
+                    1,
+                    &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                    &[192, 168, 1, 1],
+                    &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                    &[192, 168, 1, 2],
                 )
                 .unwrap();
         });
@@ -270,31 +308,6 @@ mod tests {
         // Packet builder.
         let mut packet_builder = PacketBuilder::new(&mut packet);
 
-        // Random values for the fields.
-        let src_mac = [0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f];
-        let dest_mac = [0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7];
-        let ethertype = 2048;
-        let version = 99;
-        let ihl = 5;
-        let dscp = 99;
-        let ecn = 123;
-        let total_length = 12345;
-        let identification = 54321;
-        let fragment_offset = 12345;
-        let ttl = 123;
-        let protocol = 6;
-        let src_ip = [192, 168, 1, 1];
-        let src_port = 99;
-        let dest_ip = [192, 168, 1, 2];
-        let dest_port = 11;
-        let sequence_number = 123;
-        let acknowledgment_number = 321;
-        let reserved = 11;
-        let flags = 99;
-        let data_offset = 99;
-        let window_size = 4321;
-        let urgent_pointer = 1234;
-
         // Expected output given the chosen values.
         let should_be = [
             4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
@@ -306,35 +319,39 @@ mod tests {
         let allocations = allocation_counter::measure(|| {
             // Build the packet.
             packet_builder
-                .ethernet(&src_mac, &dest_mac, ethertype)
+                .ethernet(
+                    &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                    &[0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7],
+                    2048,
+                )
                 .unwrap()
                 .ipv4(
-                    version,
-                    ihl,
-                    dscp,
-                    ecn,
-                    total_length,
-                    identification,
-                    flags,
-                    fragment_offset,
-                    ttl,
-                    protocol,
-                    &src_ip,
-                    &dest_ip,
+                    99,
+                    5,
+                    99,
+                    123,
+                    12345,
+                    54321,
+                    99,
+                    12345,
+                    123,
+                    6,
+                    &[192, 168, 1, 1],
+                    &[192, 168, 1, 2],
                 )
                 .unwrap()
                 .tcp(
-                    &src_ip,
-                    src_port,
-                    &dest_ip,
-                    dest_port,
-                    sequence_number,
-                    acknowledgment_number,
-                    reserved,
-                    data_offset,
-                    flags,
-                    window_size,
-                    urgent_pointer,
+                    &[192, 168, 1, 1],
+                    99,
+                    &[192, 168, 1, 2],
+                    11,
+                    123,
+                    321,
+                    11,
+                    99,
+                    99,
+                    4321,
+                    1234,
                 )
                 .unwrap();
         });
@@ -354,26 +371,6 @@ mod tests {
         // Packet builder.
         let mut packet_builder = PacketBuilder::new(&mut packet);
 
-        // Random values for the fields.
-        let src_mac = [0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f];
-        let dest_mac = [0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7];
-        let ethertype = 2048;
-        let version = 99;
-        let ihl = 5;
-        let dscp = 99;
-        let ecn = 123;
-        let total_length = 12345;
-        let identification = 54321;
-        let fragment_offset = 12345;
-        let ttl = 123;
-        let protocol = 6;
-        let src_ip = [192, 168, 1, 1];
-        let src_port = 99;
-        let dest_ip = [192, 168, 1, 2];
-        let dest_port = 11;
-        let flags = 99;
-        let length = 4321;
-
         // Expected output given the chosen values.
         let should_be = [
             4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
@@ -385,24 +382,78 @@ mod tests {
         let allocations = allocation_counter::measure(|| {
             // Build the packet.
             packet_builder
-                .ethernet(&src_mac, &dest_mac, ethertype)
-                .unwrap()
-                .ipv4(
-                    version,
-                    ihl,
-                    dscp,
-                    ecn,
-                    total_length,
-                    identification,
-                    flags,
-                    fragment_offset,
-                    ttl,
-                    protocol,
-                    &src_ip,
-                    &dest_ip,
+                .ethernet(
+                    &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                    &[0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7],
+                    2048,
                 )
                 .unwrap()
-                .udp(&src_ip, src_port, &dest_ip, dest_port, length)
+                .ipv4(
+                    99,
+                    5,
+                    99,
+                    123,
+                    12345,
+                    54321,
+                    99,
+                    12345,
+                    123,
+                    6,
+                    &[192, 168, 1, 1],
+                    &[192, 168, 1, 2],
+                )
+                .unwrap()
+                .udp(&[192, 168, 1, 1], 99, &[192, 168, 1, 2], 11, 4321)
+                .unwrap();
+        });
+
+        // Output should match the exepectation.
+        assert_eq!(packet, should_be);
+
+        // Ensure zero allocations.
+        assert_eq!(allocations.count_total, 0);
+    }
+
+    #[test]
+    fn test_icmp_in_ipv4_in_ethernet() {
+        // Raw packet data.
+        let mut packet = [0u8; 42];
+
+        // Packet builder.
+        let mut packet_builder = PacketBuilder::new(&mut packet);
+
+        // Expected output given the chosen values.
+        let should_be = [
+            4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
+            112, 57, 123, 1, 87, 118, 192, 168, 1, 1, 192, 168, 1, 2, 8, 0, 247, 255, 0, 0, 0, 0,
+        ];
+
+        // Measure the number of allocations.
+        let allocations = allocation_counter::measure(|| {
+            // Build the packet.
+            packet_builder
+                .ethernet(
+                    &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                    &[0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7],
+                    2048,
+                )
+                .unwrap()
+                .ipv4(
+                    99,
+                    5,
+                    99,
+                    123,
+                    12345,
+                    54321,
+                    99,
+                    12345,
+                    123,
+                    1,
+                    &[192, 168, 1, 1],
+                    &[192, 168, 1, 2],
+                )
+                .unwrap()
+                .icmp(8, 0)
                 .unwrap();
         });
 

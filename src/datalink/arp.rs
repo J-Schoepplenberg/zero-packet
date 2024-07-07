@@ -1,13 +1,12 @@
+use crate::utils::to_hex_string;
 use core::fmt;
 
-use crate::utils::to_hex_string;
-
 /// Represents an ARP header.
-pub struct Arp<'a> {
+pub struct ArpPacket<'a> {
     pub data: &'a mut [u8],
 }
 
-impl<'a> Arp<'a> {
+impl<'a> ArpPacket<'a> {
     /// The minimum length of an ARP header in bytes.
     pub const HEADER_LENGTH: usize = 28;
 
@@ -191,7 +190,7 @@ impl<'a> Arp<'a> {
     }
 }
 
-impl fmt::Debug for Arp<'_> {
+impl fmt::Debug for ArpPacket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sender_ip = self.get_spa();
         let target_ip = self.get_tpa();
@@ -227,7 +226,7 @@ mod tests {
         let mut data = [0; 28];
 
         // Create a new ARP header from the raw data.
-        let mut arp = Arp::new(&mut data).unwrap();
+        let mut arp = ArpPacket::new(&mut data).unwrap();
 
         // Set the ARP header fields.
         arp.set_htype(1);
@@ -250,7 +249,5 @@ mod tests {
         assert_eq!(arp.get_spa(), &[12, 13, 14, 15]);
         assert_eq!(arp.get_tha(), &[16, 17, 18, 19, 20, 21]);
         assert_eq!(arp.get_tpa(), &[22, 23, 24, 25]);
-
-        println!("{:?}", arp);
     }
 }

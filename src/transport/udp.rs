@@ -76,7 +76,7 @@ impl<'a> UdpDatagram<'a> {
         self.data[6] = 0;
         self.data[7] = 0;
         let pseudo_header = pseudo_header(src_ip, dest_ip, 17, self.data.len());
-        let checksum = internet_checksum(&self.data, pseudo_header);
+        let checksum = internet_checksum(self.data, pseudo_header);
         self.data[6] = (checksum >> 8) as u8;
         self.data[7] = (checksum & 0xff) as u8;
     }
@@ -109,17 +109,17 @@ mod tests {
         let dest_ip = [192, 168, 1, 2];
 
         // Create a new UDP datagram from the raw data.
-        let mut udp_datagram = UdpDatagram::new(&mut data).unwrap();
+        let mut udp = UdpDatagram::new(&mut data).unwrap();
 
         // Set the fields.
-        udp_datagram.set_src_port(src_port);
-        udp_datagram.set_dest_port(dst_port);
-        udp_datagram.set_length(length);
-        udp_datagram.set_checksum(&src_ip, &dest_ip);
+        udp.set_src_port(src_port);
+        udp.set_dest_port(dst_port);
+        udp.set_length(length);
+        udp.set_checksum(&src_ip, &dest_ip);
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(udp_datagram.get_src_port(), src_port);
-        assert_eq!(udp_datagram.get_dest_port(), dst_port);
-        assert_eq!(udp_datagram.get_length(), length);
+        assert_eq!(udp.get_src_port(), src_port);
+        assert_eq!(udp.get_dest_port(), dst_port);
+        assert_eq!(udp.get_length(), length);
     }
 }

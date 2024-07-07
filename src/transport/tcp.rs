@@ -164,7 +164,7 @@ impl<'a> TcpSegment<'a> {
         self.data[16] = 0;
         self.data[17] = 0;
         let pseudo_header = pseudo_header(src_ip, dest_ip, 6, self.data.len());
-        let checksum = internet_checksum(&self.data, pseudo_header);
+        let checksum = internet_checksum(self.data, pseudo_header);
         self.data[16] = (checksum >> 8) as u8;
         self.data[17] = (checksum & 0xff) as u8;
     }
@@ -210,30 +210,27 @@ mod tests {
         let urgent_pointer = 5;
 
         // Create a new TCP segment from the raw data.
-        let mut tcp_segment = TcpSegment::new(&mut data).unwrap();
-        tcp_segment.set_src_port(src_port);
-        tcp_segment.set_dest_port(dest_port);
-        tcp_segment.set_sequence_number(sequence_number);
-        tcp_segment.set_acknowledgment_number(acknowledgment_number);
-        tcp_segment.set_reserved(reserved);
-        tcp_segment.set_data_offset(data_offset);
-        tcp_segment.set_flags(flags);
-        tcp_segment.set_window_size(window_size);
-        tcp_segment.set_urgent_pointer(urgent_pointer);
-        tcp_segment.set_checksum(&src_ip, &dest_ip);
+        let mut tcp = TcpSegment::new(&mut data).unwrap();
+        tcp.set_src_port(src_port);
+        tcp.set_dest_port(dest_port);
+        tcp.set_sequence_number(sequence_number);
+        tcp.set_acknowledgment_number(acknowledgment_number);
+        tcp.set_reserved(reserved);
+        tcp.set_data_offset(data_offset);
+        tcp.set_flags(flags);
+        tcp.set_window_size(window_size);
+        tcp.set_urgent_pointer(urgent_pointer);
+        tcp.set_checksum(&src_ip, &dest_ip);
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(tcp_segment.get_src_port(), src_port);
-        assert_eq!(tcp_segment.get_dest_port(), dest_port);
-        assert_eq!(tcp_segment.get_sequence_number(), sequence_number);
-        assert_eq!(
-            tcp_segment.get_acknowledgment_number(),
-            acknowledgment_number
-        );
-        assert_eq!(tcp_segment.get_reserved(), reserved);
-        assert_eq!(tcp_segment.get_data_offset(), data_offset);
-        assert_eq!(tcp_segment.get_flags(), flags);
-        assert_eq!(tcp_segment.get_window_size(), window_size);
-        assert_eq!(tcp_segment.get_urgent_pointer(), urgent_pointer);
+        assert_eq!(tcp.get_src_port(), src_port);
+        assert_eq!(tcp.get_dest_port(), dest_port);
+        assert_eq!(tcp.get_sequence_number(), sequence_number);
+        assert_eq!(tcp.get_acknowledgment_number(), acknowledgment_number);
+        assert_eq!(tcp.get_reserved(), reserved);
+        assert_eq!(tcp.get_data_offset(), data_offset);
+        assert_eq!(tcp.get_flags(), flags);
+        assert_eq!(tcp.get_window_size(), window_size);
+        assert_eq!(tcp.get_urgent_pointer(), urgent_pointer);
     }
 }

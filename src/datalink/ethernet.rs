@@ -103,16 +103,16 @@ mod tests {
         let ethertype = 2048;
 
         // Create an Ethernet frame from the raw data.
-        let mut ethernet_frame = EthernetFrame::new(&mut data).unwrap();
+        let mut ethernet = EthernetFrame::new(&mut data).unwrap();
 
         // Set the fields.
-        ethernet_frame.set_src_mac(&src);
-        ethernet_frame.set_dest_mac(&dest);
-        ethernet_frame.set_ethertype(ethertype);
+        ethernet.set_src_mac(&src);
+        ethernet.set_dest_mac(&dest);
+        ethernet.set_ethertype(ethertype);
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(ethernet_frame.get_src_mac(), src);
-        assert_eq!(ethernet_frame.get_dest_mac(), dest);
-        assert_eq!(ethernet_frame.get_ethertype(), ethertype);
+        assert_eq!(ethernet.get_src_mac(), src);
+        assert_eq!(ethernet.get_dest_mac(), dest);
+        assert_eq!(ethernet.get_ethertype(), ethertype);
     }
 }
