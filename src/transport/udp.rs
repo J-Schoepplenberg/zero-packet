@@ -1,3 +1,6 @@
+use crate::network::checksum::{internet_checksum, pseudo_header};
+use core::fmt;
+
 /// Represents a UDP packet.
 pub struct UdpDatagram<'a> {
     pub data: &'a mut [u8],
@@ -11,7 +14,7 @@ impl<'a> UdpDatagram<'a> {
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
         if data.len() < Self::HEADER_LENGTH {
-            return Err("Slice is too short to be a UDP header.");
+            return Err("Slice is too short to contain a UDP header.");
         }
 
         Ok(Self { data })
@@ -62,42 +65,30 @@ impl<'a> UdpDatagram<'a> {
         self.data[5] = length as u8;
     }
 
-    /// Calculates the checksum field.
-    /// See: https://datatracker.ietf.org/doc/html/rfc1071.
+    /// Calculates the checksum field for error checking.
+    ///
+    /// Consists of the IP pseudo-header, TCP header and payload.
+    ///
+    /// Checksum is optional in UDP for IPv4, but mandatory for IPv6.
+    /// Although, it is strongly recommended to use checksums for both. See: RFC 1122.
     #[inline]
     pub fn set_checksum(&mut self, src_ip: &[u8; 4], dest_ip: &[u8; 4]) {
         self.data[6] = 0;
         self.data[7] = 0;
-
-        let mut count = self.data.len();
-        let mut sum = 0;
-        let mut i = 0;
-
-        sum += ((src_ip[0] as u32) << 8) + (src_ip[1] as u32);
-        sum += ((src_ip[2] as u32) << 8) + (src_ip[3] as u32);
-        sum += ((dest_ip[0] as u32) << 8) + (dest_ip[1] as u32);
-        sum += ((dest_ip[2] as u32) << 8) + (dest_ip[3] as u32);
-        sum += 17; 
-        sum += count as u32;
-
-        while count > 1 {
-            sum += ((self.data[i] as u32) << 8) + (self.data[i + 1] as u32);
-            count -= 2;
-            i += 2;
-        }
-
-        if count > 0 {
-            sum += (self.data[i] as u32) << 8;
-        }
-
-        while sum >> 16 != 0 {
-            sum = (sum & 0xffff) + (sum >> 16);
-        }
-
-        let checksum = !sum as u16;
-
+        let pseudo_header = pseudo_header(src_ip, dest_ip, 17, self.data.len());
+        let checksum = internet_checksum(&self.data, pseudo_header);
         self.data[6] = (checksum >> 8) as u8;
         self.data[7] = (checksum & 0xff) as u8;
+    }
+}
+
+impl fmt::Debug for UdpDatagram<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UdpDatagram")
+            .field("src_port", &self.get_src_port())
+            .field("dest_port", &self.get_dest_port())
+            .field("length", &self.get_length())
+            .finish()
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::{
-    datalink::ethernet::EthernetFrame,
+    datalink::{arp::Arp, ethernet::EthernetFrame},
     network::ipv4::IPv4Packet,
     transport::{tcp::TcpSegment, udp::UdpDatagram},
 };
@@ -22,7 +22,15 @@ impl<'a> PacketBuilder<'a> {
         self.pos
     }
 
-    /// Sets the Ethernet header fields.
+    /// Returns the length of the payload in bytes.
+    #[inline]
+    pub fn payload_length(&self) -> usize {
+        self.data.len() - self.pos
+    }
+
+    /// Sets Ethernet header fields.
+    ///
+    /// Should be the first header in the packet.
     #[inline]
     pub fn ethernet(
         &mut self,
@@ -41,7 +49,48 @@ impl<'a> PacketBuilder<'a> {
         Ok(self)
     }
 
-    /// Sets the IPv4 header fields.
+    /// Sets ARP header fields.
+    ///
+    /// Should be encapsulated in an Ethernet frame.
+    /// Therefore, should be called after `ethernet`.
+    #[inline]
+    pub fn arp(
+        &mut self,
+        hardware_type: u16,
+        protocol_type: u16,
+        hardware_address_length: u8,
+        protocol_address_length: u8,
+        operation: u16,
+        src_mac: &[u8; 6],
+        src_ip: &[u8; 4],
+        dest_mac: &[u8; 6],
+        dest_ip: &[u8; 4],
+    ) -> Result<&mut Self, &'static str> {
+        if self.data.len() < self.pos {
+            return Err("Data too short to contain an ARP header.");
+        }
+
+        let mut arp_packet = Arp::new(&mut self.data[self.pos..])?;
+
+        arp_packet.set_htype(hardware_type);
+        arp_packet.set_ptype(protocol_type);
+        arp_packet.set_hlen(hardware_address_length);
+        arp_packet.set_plen(protocol_address_length);
+        arp_packet.set_oper(operation);
+        arp_packet.set_sha(src_mac);
+        arp_packet.set_spa(src_ip);
+        arp_packet.set_tha(dest_mac);
+        arp_packet.set_tpa(dest_ip);
+
+        self.pos += arp_packet.header_length();
+
+        Ok(self)
+    }
+
+    /// Sets IPv4 header fields.
+    ///
+    /// Should be encapsulated in an Ethernet frame.
+    /// Therefore, should be called after `ethernet`.
     #[inline]
     pub fn ipv4(
         &mut self,
@@ -83,7 +132,10 @@ impl<'a> PacketBuilder<'a> {
         Ok(self)
     }
 
-    /// Sets the TCP header fields.
+    /// Sets TCP header fields.
+    ///
+    /// Should be encapsulated in an IPv4 or IPv6 packet.
+    /// Therefore, should be called after `ipv4` or `ipv6`.
     #[inline]
     pub fn tcp(
         &mut self,
@@ -121,7 +173,10 @@ impl<'a> PacketBuilder<'a> {
         Ok(self)
     }
 
-    /// Sets the UDP header fields.
+    /// Sets UDP header fields.
+    ///
+    /// Should be encapsulated in an IPv4 or IPv6 packet.
+    /// Therefore, should be called after `ipv4` or `ipv6`.
     #[inline]
     pub fn udp(
         &mut self,
@@ -153,7 +208,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tcp_in_ipv4_in_ethernet2() {
+    fn test_arp_in_ethernet() {
+        // Raw packet data.
+        let mut packet = [0u8; 42];
+
+        // Packet builder.
+        let mut packet_builder = PacketBuilder::new(&mut packet);
+
+        // Random values for the fields.
+        let src_mac = [0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f];
+        let dest_mac = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let ethertype = 2054;
+        let hardware_type = 1;
+        let protocol_type = 2048;
+        let hardware_address_length = 6;
+        let protocol_address_length = 4;
+        let operation = 1;
+        let src_mac_arp = [0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f];
+        let src_ip = [192, 168, 1, 1];
+        let dest_mac_arp = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let dest_ip = [192, 168, 1, 2];
+
+        // Expected output given the chosen values.
+        let should_be = [
+            255, 255, 255, 255, 255, 255, 52, 151, 246, 148, 2, 15, 8, 6, 0, 1, 8, 0, 6, 4, 0, 1,
+            52, 151, 246, 148, 2, 15, 192, 168, 1, 1, 0, 0, 0, 0, 0, 0, 192, 168, 1, 2,
+        ];
+
+        // Measure the number of allocations.
+        let allocations = allocation_counter::measure(|| {
+            // Build the packet.
+            packet_builder
+                .ethernet(&src_mac, &dest_mac, ethertype)
+                .unwrap()
+                .arp(
+                    hardware_type,
+                    protocol_type,
+                    hardware_address_length,
+                    protocol_address_length,
+                    operation,
+                    &src_mac_arp,
+                    &src_ip,
+                    &dest_mac_arp,
+                    &dest_ip,
+                )
+                .unwrap();
+        });
+
+        // Output should match the exepectation.
+        assert_eq!(packet, should_be);
+
+        // Ensure zero allocations.
+        assert_eq!(allocations.count_total, 0);
+    }
+
+    #[test]
+    fn test_tcp_in_ipv4_in_ethernet() {
         // Raw packet data.
         let mut packet = [0u8; 54];
 
@@ -237,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn test_udp_in_ipv4_in_ethernet2() {
+    fn test_udp_in_ipv4_in_ethernet() {
         // Raw packet data.
         let mut packet = [0u8; 54];
 

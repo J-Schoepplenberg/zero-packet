@@ -1,3 +1,4 @@
+use crate::network::checksum::{internet_checksum, pseudo_header};
 use core::fmt;
 
 /// Represents a TCP segment.
@@ -13,7 +14,7 @@ impl<'a> TcpSegment<'a> {
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
         if data.len() < Self::HEADER_LENGTH {
-            return Err("Slice is too short to be a TCP header.");
+            return Err("Slice is too short to contain a TCP header.");
         }
 
         Ok(Self { data })
@@ -155,41 +156,15 @@ impl<'a> TcpSegment<'a> {
         self.data[19] = (urgent_pointer & 0xFF) as u8;
     }
 
-    /// Calculates the checksum field.
-    /// See: https://datatracker.ietf.org/doc/html/rfc1071.
+    /// Calculates the checksum field for error checking.
+    ///
+    /// Consists of the IP pseudo-header, TCP header and payload.
     #[inline]
     pub fn set_checksum(&mut self, src_ip: &[u8; 4], dest_ip: &[u8; 4]) {
         self.data[16] = 0;
         self.data[17] = 0;
-
-        let mut count = self.data.len();
-        let mut sum = 0;
-        let mut i = 0;
-
-        sum += ((src_ip[0] as u32) << 8) + (src_ip[1] as u32);
-        sum += ((src_ip[2] as u32) << 8) + (src_ip[3] as u32);
-        sum += ((dest_ip[0] as u32) << 8) + (dest_ip[1] as u32);
-        sum += ((dest_ip[2] as u32) << 8) + (dest_ip[3] as u32);
-        sum += 6; 
-        sum += count as u32; 
-
-        while count > 1 {
-            let word = ((self.data[i] as u32) << 8) + (self.data[i + 1] as u32);
-            sum += word;
-            i += 2;
-            count -= 2;
-        }
-
-        if count > 0 {
-            sum += (self.data[i] as u32) << 8;
-        }
-
-        while sum >> 16 != 0 {
-            sum = (sum & 0xffff) + (sum >> 16);
-        }
-
-        let checksum = !sum as u16;
-
+        let pseudo_header = pseudo_header(src_ip, dest_ip, 6, self.data.len());
+        let checksum = internet_checksum(&self.data, pseudo_header);
         self.data[16] = (checksum >> 8) as u8;
         self.data[17] = (checksum & 0xff) as u8;
     }
@@ -246,12 +221,15 @@ mod tests {
         tcp_segment.set_window_size(window_size);
         tcp_segment.set_urgent_pointer(urgent_pointer);
         tcp_segment.set_checksum(&src_ip, &dest_ip);
-        
+
         // Ensure the fields are set and retrieved correctly.
         assert_eq!(tcp_segment.get_src_port(), src_port);
         assert_eq!(tcp_segment.get_dest_port(), dest_port);
         assert_eq!(tcp_segment.get_sequence_number(), sequence_number);
-        assert_eq!(tcp_segment.get_acknowledgment_number(), acknowledgment_number);
+        assert_eq!(
+            tcp_segment.get_acknowledgment_number(),
+            acknowledgment_number
+        );
         assert_eq!(tcp_segment.get_reserved(), reserved);
         assert_eq!(tcp_segment.get_data_offset(), data_offset);
         assert_eq!(tcp_segment.get_flags(), flags);

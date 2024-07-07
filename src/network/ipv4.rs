@@ -1,5 +1,7 @@
 use core::fmt;
 
+use super::checksum::internet_checksum;
+
 /// Represents an IPv4 packet.
 pub struct IPv4Packet<'a> {
     pub data: &'a mut [u8],
@@ -10,11 +12,11 @@ impl<'a> IPv4Packet<'a> {
     const HEADER_LENGTH: usize = 20;
 
     /// Creates a new `IPv4Packet` from the given data slice.
-    /// Returns an error if the data slice is too short to be an IPv4 header.
+    /// Returns an error if the data Slice is too short to contain an IPv4 header.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
         if data.len() < Self::HEADER_LENGTH {
-            return Err("Slice is too short to be an IPv4 header.");
+            return Err("Slice is too short to contain an IPv4 header.");
         }
 
         Ok(Self { data })
@@ -191,28 +193,7 @@ impl<'a> IPv4Packet<'a> {
     pub fn set_checksum(&mut self) {
         self.data[10] = 0;
         self.data[11] = 0;
-
-        let mut sum = 0;
-        let mut count = self.data.len();
-        let mut i = 0;
-
-        while count > 1 {
-            let word = ((self.data[i] as u32) << 8) + (self.data[i + 1] as u32);
-            sum += word;
-            i += 2;
-            count -= 2;
-        }
-
-        if count > 0 {
-            sum += (self.data[i] as u32) << 8;
-        }
-
-        while (sum >> 16) != 0 {
-            sum = (sum & 0xffff) + (sum >> 16);
-        }
-
-        let checksum = !sum as u16;
-
+        let checksum = internet_checksum(self.data, 0);
         self.data[10] = (checksum >> 8) as u8;
         self.data[11] = (checksum & 0xff) as u8;
     }
@@ -222,6 +203,11 @@ impl<'a> fmt::Debug for IPv4Packet<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let src_ip = self.get_src_ip();
         let dest_ip = self.get_dest_ip();
+        let src_formatted = format!("{}.{}.{}.{}", src_ip[0], src_ip[1], src_ip[2], src_ip[3]);
+        let dest_formatted = format!(
+            "{}.{}.{}.{}",
+            dest_ip[0], dest_ip[1], dest_ip[2], dest_ip[3]
+        );
         f.debug_struct("IPv4Packet")
             .field("version", &self.get_version())
             .field("ihl", &self.get_ihl())
@@ -234,17 +220,8 @@ impl<'a> fmt::Debug for IPv4Packet<'a> {
             .field("ttl", &self.get_ttl())
             .field("protocol", &self.get_protocol())
             .field("checksum", &self.get_checksum())
-            .field(
-                "src_ip",
-                &format!("{}.{}.{}.{}", src_ip[0], src_ip[1], src_ip[2], src_ip[3]),
-            )
-            .field(
-                "dest_ip",
-                &format!(
-                    "{}.{}.{}.{}",
-                    dest_ip[0], dest_ip[1], dest_ip[2], dest_ip[3]
-                ),
-            )
+            .field("src_ip", &src_formatted)
+            .field("dest_ip", &dest_formatted)
             .finish()
     }
 }
@@ -289,7 +266,7 @@ mod tests {
         ipv4_packet.set_src_ip(&src_ip);
         ipv4_packet.set_dest_ip(&dest_ip);
         ipv4_packet.set_checksum();
-        
+
         // Ensure the fields are set and retrieved correctly.
         assert_eq!(ipv4_packet.get_version(), version);
         assert_eq!(ipv4_packet.get_ihl(), ihl);

@@ -17,7 +17,7 @@ impl<'a> EthernetFrame<'a> {
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
         if data.len() < Self::HEADER_LENGTH {
-            return Err("Slice is too short to be an Ethernet frame.");
+            return Err("Slice is too short to contain an Ethernet frame.");
         }
 
         Ok(Self { data })
