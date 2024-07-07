@@ -7,20 +7,23 @@ use crate::{
 /// A zero-allocation packet builder.
 pub struct PacketBuilder<'a> {
     pub data: &'a mut [u8],
-    position: usize,
+    header_len: usize,
 }
 
 impl<'a> PacketBuilder<'a> {
     /// Creates a new `PacketBuilder` from the given data slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> PacketBuilder<'a> {
-        PacketBuilder { data, position: 0 }
+        PacketBuilder {
+            data,
+            header_len: 0,
+        }
     }
 
     #[inline]
     /// Returns the length of all encapsulated headers in bytes.
     pub fn total_header_length(&self) -> usize {
-        self.position
+        self.header_len
     }
 
     /// Returns the length of the payload in bytes.
@@ -28,7 +31,7 @@ impl<'a> PacketBuilder<'a> {
     /// Should be called after all headers have been set.
     #[inline]
     pub fn payload_length(&self) -> usize {
-        self.data.len() - self.position
+        self.data.len() - self.header_len
     }
 
     /// Returns the payload.
@@ -36,7 +39,7 @@ impl<'a> PacketBuilder<'a> {
     /// Should be called after all headers have been set.
     #[inline]
     pub fn get_payload(&self) -> &[u8] {
-        &self.data[self.position..]
+        &self.data[self.header_len..]
     }
 
     /// Sets the payload.
@@ -45,12 +48,12 @@ impl<'a> PacketBuilder<'a> {
     ///
     /// Fails if the payload is too large to fit in the remaining data slice.
     #[inline]
-    pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
-        if self.data.len() - self.position < payload.len() {
+    pub fn payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
+        if self.data.len() - self.header_len < payload.len() {
             return Err("Data too short to contain the payload.");
         }
 
-        self.data[self.position..self.position + payload.len()].copy_from_slice(payload);
+        self.data[self.header_len..self.header_len + payload.len()].copy_from_slice(payload);
 
         Ok(())
     }
@@ -71,7 +74,7 @@ impl<'a> PacketBuilder<'a> {
         ethernet_frame.set_dest_mac(dest_mac);
         ethernet_frame.set_ethertype(ethertype);
 
-        self.position = EthernetFrame::HEADER_LENGTH;
+        self.header_len = EthernetFrame::HEADER_LENGTH;
 
         Ok(self)
     }
@@ -93,11 +96,11 @@ impl<'a> PacketBuilder<'a> {
         dest_mac: &[u8; 6],
         dest_ip: &[u8; 4],
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.position {
+        if self.data.len() < self.header_len {
             return Err("Data too short to contain an ARP header.");
         }
 
-        let mut arp_packet = ArpPacket::new(&mut self.data[self.position..])?;
+        let mut arp_packet = ArpPacket::new(&mut self.data[self.header_len..])?;
 
         arp_packet.set_htype(hardware_type);
         arp_packet.set_ptype(protocol_type);
@@ -109,7 +112,7 @@ impl<'a> PacketBuilder<'a> {
         arp_packet.set_tha(dest_mac);
         arp_packet.set_tpa(dest_ip);
 
-        self.position += arp_packet.header_length();
+        self.header_len += arp_packet.header_length();
 
         Ok(self)
     }
@@ -134,11 +137,11 @@ impl<'a> PacketBuilder<'a> {
         src_ip: &[u8; 4],
         dest_ip: &[u8; 4],
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.position {
+        if self.data.len() < self.header_len {
             return Err("Data too short to contain an IPv4 header.");
         }
 
-        let mut ipv4_packet = IPv4Packet::new(&mut self.data[self.position..])?;
+        let mut ipv4_packet = IPv4Packet::new(&mut self.data[self.header_len..])?;
 
         ipv4_packet.set_version(version);
         ipv4_packet.set_ihl(ihl);
@@ -154,7 +157,7 @@ impl<'a> PacketBuilder<'a> {
         ipv4_packet.set_dest_ip(dest_ip);
         ipv4_packet.set_checksum();
 
-        self.position += ipv4_packet.header_length();
+        self.header_len += ipv4_packet.header_length();
 
         Ok(self)
     }
@@ -178,11 +181,11 @@ impl<'a> PacketBuilder<'a> {
         window_size: u16,
         urgent_pointer: u16,
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.position {
+        if self.data.len() < self.header_len {
             return Err("Data too short to contain a TCP segment.");
         }
 
-        let mut tcp_packet = TcpSegment::new(&mut self.data[self.position..])?;
+        let mut tcp_packet = TcpSegment::new(&mut self.data[self.header_len..])?;
 
         tcp_packet.set_src_port(src_port);
         tcp_packet.set_dest_port(dest_port);
@@ -195,7 +198,7 @@ impl<'a> PacketBuilder<'a> {
         tcp_packet.set_urgent_pointer(urgent_pointer);
         tcp_packet.set_checksum(src_ip, dest_ip);
 
-        self.position += tcp_packet.header_length();
+        self.header_len += tcp_packet.header_length();
 
         Ok(self)
     }
@@ -213,18 +216,18 @@ impl<'a> PacketBuilder<'a> {
         dest_port: u16,
         length: u16,
     ) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.position {
+        if self.data.len() < self.header_len {
             return Err("Data too short to contain a UDP datagram.");
         }
 
-        let mut udp_packet = UdpDatagram::new(&mut self.data[self.position..])?;
+        let mut udp_packet = UdpDatagram::new(&mut self.data[self.header_len..])?;
 
         udp_packet.set_src_port(src_port);
         udp_packet.set_dest_port(dest_port);
         udp_packet.set_length(length);
         udp_packet.set_checksum(src_ip, dest_ip);
 
-        self.position += udp_packet.header_length();
+        self.header_len += udp_packet.header_length();
 
         Ok(self)
     }
@@ -235,17 +238,17 @@ impl<'a> PacketBuilder<'a> {
     /// Therefore, should be called after `ipv4` or `ipv6`.
     #[inline]
     pub fn icmp(&mut self, icmp_type: u8, icmp_code: u8) -> Result<&mut Self, &'static str> {
-        if self.data.len() < self.position {
+        if self.data.len() < self.header_len {
             return Err("Data too short to contain an ICMP packet.");
         }
 
-        let mut icmp_packet = IcmpPacket::new(&mut self.data[self.position..])?;
+        let mut icmp_packet = IcmpPacket::new(&mut self.data[self.header_len..])?;
 
         icmp_packet.set_type(icmp_type);
         icmp_packet.set_code(icmp_code);
         icmp_packet.set_checksum();
 
-        self.position += icmp_packet.header_length();
+        self.header_len += icmp_packet.header_length();
 
         Ok(self)
     }

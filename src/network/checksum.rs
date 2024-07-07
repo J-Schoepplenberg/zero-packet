@@ -1,6 +1,4 @@
-/// Calculates the checksum field.
-///
-/// Mandatory for IPv4 protocol.
+/// Calculates the internet checksum for error checking.
 ///
 /// See: https://datatracker.ietf.org/doc/html/rfc1071.
 #[inline]
