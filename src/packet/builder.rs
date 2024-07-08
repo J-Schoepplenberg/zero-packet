@@ -14,6 +14,9 @@ pub struct PacketBuilder<'a> {
 }
 
 impl<'a> PacketBuilder<'a> {
+    // Ignore clippy lint for too many arguments.
+    #![allow(clippy::too_many_arguments)]
+
     /// Creates a new `PacketBuilder` from the given data slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> PacketBuilder<'a> {

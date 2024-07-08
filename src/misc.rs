@@ -1,6 +1,6 @@
 /// Common EtherTypes.
 /// 
-/// See: https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml.
+/// See: <https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml.>.
 #[repr(u16)]
 #[derive(Debug, PartialEq)]
 pub enum EtherType {

@@ -1,6 +1,6 @@
 /// Calculates the internet checksum for error checking.
 ///
-/// See: https://datatracker.ietf.org/doc/html/rfc1071.
+/// See: <https://datatracker.ietf.org/doc/html/rfc1071.>.
 #[inline]
 pub fn internet_checksum(data: &[u8], accumulator: u32) -> u16 {
     let mut sum = accumulator;
