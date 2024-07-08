@@ -2,11 +2,11 @@ use crate::utils::to_hex_string;
 use core::fmt;
 
 /// Represents an ARP header.
-pub struct ArpPacket<'a> {
+pub struct ArpBuilder<'a> {
     pub data: &'a mut [u8],
 }
 
-impl<'a> ArpPacket<'a> {
+impl<'a> ArpBuilder<'a> {
     /// The minimum length of an ARP header in bytes.
     pub const HEADER_LENGTH: usize = 28;
 
@@ -24,78 +24,6 @@ impl<'a> ArpPacket<'a> {
     #[inline]
     pub fn header_length(&self) -> usize {
         Self::HEADER_LENGTH
-    }
-
-    /// Returns the hardware type field.
-    ///
-    /// Specifies the type of hardware used for the network (e.g. Ethernet).
-    #[inline]
-    pub fn get_htype(&self) -> u16 {
-        ((self.data[0] as u16) << 8) | (self.data[1] as u16)
-    }
-
-    /// Returns the protocol type field.
-    ///
-    /// Specifies the type of protocol address (e.g. IPv4).
-    #[inline]
-    pub fn get_ptype(&self) -> u16 {
-        ((self.data[2] as u16) << 8) | (self.data[3] as u16)
-    }
-
-    /// Returns the hardware length field.
-    ///
-    /// Specifies the length of the hardware address in bytes.
-    #[inline]
-    pub fn get_hlen(&self) -> u8 {
-        self.data[4]
-    }
-
-    /// Returns the protocol length field.
-    ///
-    /// Specifies the length of the protocol address in bytes.
-    #[inline]
-    pub fn get_plen(&self) -> u8 {
-        self.data[5]
-    }
-
-    /// Returns the operation field.
-    ///
-    /// Specifies the operation being performed (e.g. request, reply).
-    #[inline]
-    pub fn get_oper(&self) -> u16 {
-        ((self.data[6] as u16) << 8) | (self.data[7] as u16)
-    }
-
-    /// Returns the sender hardware address field.
-    ///
-    /// Specifies the hardware address of the sender.
-    #[inline]
-    pub fn get_sha(&self) -> &[u8] {
-        &self.data[8..14]
-    }
-
-    /// Returns the sender protocol address field.
-    ///
-    /// Specifies the protocol address of the sender.
-    #[inline]
-    pub fn get_spa(&self) -> &[u8] {
-        &self.data[14..18]
-    }
-
-    /// Returns the target hardware address field.
-    ///
-    /// Specifies the hardware address of the receiver
-    #[inline]
-    pub fn get_tha(&self) -> &[u8] {
-        &self.data[18..24]
-    }
-
-    /// Returns the target protocol address field.
-    ///
-    /// Specifies the protocol address of the receiver.
-    #[inline]
-    pub fn get_tpa(&self) -> &[u8] {
-        &self.data[24..28]
     }
 
     /// Sets the hardware type field.
@@ -190,7 +118,105 @@ impl<'a> ArpPacket<'a> {
     }
 }
 
-impl fmt::Debug for ArpPacket<'_> {
+#[derive(PartialEq)]
+pub struct ArpParser<'a> {
+    pub data: &'a [u8],
+}
+
+impl<'a> ArpParser<'a> {
+/// The minimum length of an ARP header in bytes.
+    pub const HEADER_LENGTH: usize = 28;
+
+    /// Creates a new `Arp` from the given slice.
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Result<Self, &'static str> {
+        if data.len() < Self::HEADER_LENGTH {
+            return Err("Slice is too short to contain an ARP header.");
+        }
+
+        Ok(Self { data })
+    }
+
+    /// Returns the header length in bytes.
+    #[inline]
+    pub fn header_length(&self) -> usize {
+        Self::HEADER_LENGTH
+    }
+
+    /// Returns the hardware type field.
+    ///
+    /// Specifies the type of hardware used for the network (e.g. Ethernet).
+    #[inline]
+    pub fn get_htype(&self) -> u16 {
+        ((self.data[0] as u16) << 8) | (self.data[1] as u16)
+    }
+
+    /// Returns the protocol type field.
+    ///
+    /// Specifies the type of protocol address (e.g. IPv4).
+    #[inline]
+    pub fn get_ptype(&self) -> u16 {
+        ((self.data[2] as u16) << 8) | (self.data[3] as u16)
+    }
+
+    /// Returns the hardware length field.
+    ///
+    /// Specifies the length of the hardware address in bytes.
+    #[inline]
+    pub fn get_hlen(&self) -> u8 {
+        self.data[4]
+    }
+
+    /// Returns the protocol length field.
+    ///
+    /// Specifies the length of the protocol address in bytes.
+    #[inline]
+    pub fn get_plen(&self) -> u8 {
+        self.data[5]
+    }
+
+    /// Returns the operation field.
+    ///
+    /// Specifies the operation being performed (e.g. request, reply).
+    #[inline]
+    pub fn get_oper(&self) -> u16 {
+        ((self.data[6] as u16) << 8) | (self.data[7] as u16)
+    }
+
+    /// Returns the sender hardware address field.
+    ///
+    /// Specifies the hardware address of the sender.
+    #[inline]
+    pub fn get_sha(&self) -> &[u8] {
+        &self.data[8..14]
+    }
+
+    /// Returns the sender protocol address field.
+    ///
+    /// Specifies the protocol address of the sender.
+    #[inline]
+    pub fn get_spa(&self) -> &[u8] {
+        &self.data[14..18]
+    }
+
+    /// Returns the target hardware address field.
+    ///
+    /// Specifies the hardware address of the receiver
+    #[inline]
+    pub fn get_tha(&self) -> &[u8] {
+        &self.data[18..24]
+    }
+
+    /// Returns the target protocol address field.
+    ///
+    /// Specifies the protocol address of the receiver.
+    #[inline]
+    pub fn get_tpa(&self) -> &[u8] {
+        &self.data[24..28]
+    }
+}
+
+impl fmt::Debug for ArpParser<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sender_ip = self.get_spa();
         let target_ip = self.get_tpa();
@@ -226,28 +252,30 @@ mod tests {
         let mut data = [0; 28];
 
         // Create a new ARP header from the raw data.
-        let mut arp = ArpPacket::new(&mut data).unwrap();
+        let mut builder = ArpBuilder::new(&mut data).unwrap();
 
         // Set the ARP header fields.
-        arp.set_htype(1);
-        arp.set_ptype(2);
-        arp.set_hlen(3);
-        arp.set_plen(4);
-        arp.set_oper(5);
-        arp.set_sha(&[6, 7, 8, 9, 10, 11]);
-        arp.set_spa(&[12, 13, 14, 15]);
-        arp.set_tha(&[16, 17, 18, 19, 20, 21]);
-        arp.set_tpa(&[22, 23, 24, 25]);
+        builder.set_htype(1);
+        builder.set_ptype(2);
+        builder.set_hlen(3);
+        builder.set_plen(4);
+        builder.set_oper(5);
+        builder.set_sha(&[6, 7, 8, 9, 10, 11]);
+        builder.set_spa(&[12, 13, 14, 15]);
+        builder.set_tha(&[16, 17, 18, 19, 20, 21]);
+        builder.set_tpa(&[22, 23, 24, 25]);
+        
+        let parser = ArpParser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(arp.get_htype(), 1);
-        assert_eq!(arp.get_ptype(), 2);
-        assert_eq!(arp.get_hlen(), 3);
-        assert_eq!(arp.get_plen(), 4);
-        assert_eq!(arp.get_oper(), 5);
-        assert_eq!(arp.get_sha(), &[6, 7, 8, 9, 10, 11]);
-        assert_eq!(arp.get_spa(), &[12, 13, 14, 15]);
-        assert_eq!(arp.get_tha(), &[16, 17, 18, 19, 20, 21]);
-        assert_eq!(arp.get_tpa(), &[22, 23, 24, 25]);
+        assert_eq!(parser.get_ptype(), 2);
+        assert_eq!(parser.get_htype(), 1);
+        assert_eq!(parser.get_hlen(), 3);
+        assert_eq!(parser.get_plen(), 4);
+        assert_eq!(parser.get_oper(), 5);
+        assert_eq!(parser.get_sha(), &[6, 7, 8, 9, 10, 11]);
+        assert_eq!(parser.get_spa(), &[12, 13, 14, 15]);
+        assert_eq!(parser.get_tha(), &[16, 17, 18, 19, 20, 21]);
+        assert_eq!(parser.get_tpa(), &[22, 23, 24, 25]);
     }
 }

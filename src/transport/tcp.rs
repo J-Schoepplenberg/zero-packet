@@ -1,19 +1,19 @@
 use crate::network::checksum::{internet_checksum, pseudo_header};
 use core::fmt;
 
+/// The minimum length of a TCP header in bytes.
+pub const TCP_MIN_HEADER_LENGTH: usize = 20;
+
 /// Represents a TCP segment.
-pub struct TcpSegment<'a> {
+pub struct TcpBuilder<'a> {
     pub data: &'a mut [u8],
 }
 
-impl<'a> TcpSegment<'a> {
-    /// The minimum length of a TCP header in bytes.
-    const HEADER_LENGTH: usize = 20;
-
+impl<'a> TcpBuilder<'a> {
     /// Creates a new `TcpSegment` from the given data slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < TCP_MIN_HEADER_LENGTH {
             return Err("Slice is too short to contain a TCP header.");
         }
 
@@ -23,73 +23,7 @@ impl<'a> TcpSegment<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_length(&self) -> usize {
-        self.get_data_offset() as usize * 4
-    }
-
-    /// Returns the source port field.
-    #[inline]
-    pub fn get_src_port(&self) -> u16 {
-        ((self.data[0] as u16) << 8) | (self.data[1] as u16)
-    }
-
-    /// Returns the destination port field.
-    #[inline]
-    pub fn get_dest_port(&self) -> u16 {
-        ((self.data[2] as u16) << 8) | (self.data[3] as u16)
-    }
-
-    /// Returns the sequence number field.
-    #[inline]
-    pub fn get_sequence_number(&self) -> u32 {
-        ((self.data[4] as u32) << 24)
-            | ((self.data[5] as u32) << 16)
-            | ((self.data[6] as u32) << 8)
-            | (self.data[7] as u32)
-    }
-
-    /// Returns the acknowledgment number field.
-    #[inline]
-    pub fn get_acknowledgment_number(&self) -> u32 {
-        ((self.data[8] as u32) << 24)
-            | ((self.data[9] as u32) << 16)
-            | ((self.data[10] as u32) << 8)
-            | (self.data[11] as u32)
-    }
-
-    /// Returns the data offset field.
-    #[inline]
-    pub fn get_data_offset(&self) -> u8 {
-        self.data[12] >> 4
-    }
-
-    /// Returns the reserved field.
-    #[inline]
-    pub fn get_reserved(&self) -> u8 {
-        self.data[12] & 0x0F
-    }
-
-    /// Returns the flags field.
-    #[inline]
-    pub fn get_flags(&self) -> u8 {
-        self.data[13]
-    }
-
-    /// Returns the window size field.
-    #[inline]
-    pub fn get_window_size(&self) -> u16 {
-        ((self.data[14] as u16) << 8) | (self.data[15] as u16)
-    }
-
-    /// Returns the checksum field.
-    #[inline]
-    pub fn get_checksum(&self) -> u16 {
-        ((self.data[16] as u16) << 8) | (self.data[17] as u16)
-    }
-
-    /// Returns the urgent pointer field.
-    #[inline]
-    pub fn get_urgent_pointer(&self) -> u16 {
-        ((self.data[18] as u16) << 8) | (self.data[19] as u16)
+        (self.data[12] >> 4) as usize * 4
     }
 
     /// Sets the source port field.
@@ -170,7 +104,97 @@ impl<'a> TcpSegment<'a> {
     }
 }
 
-impl<'a> fmt::Debug for TcpSegment<'a> {
+
+#[derive(PartialEq)]
+pub struct TcpParser<'a> {
+    pub data: &'a [u8],
+}
+
+impl<'a> TcpParser<'a> {
+    /// Creates a new `TcpSegment` from the given data slice.
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Result<Self, &'static str> {
+        if data.len() < TCP_MIN_HEADER_LENGTH{
+            return Err("Slice is too short to contain a TCP header.");
+        }
+
+        Ok(Self { data })
+    }
+
+    /// Returns the header length in bytes.
+    #[inline]
+    pub fn header_length(&self) -> usize {
+        self.get_data_offset() as usize * 4
+    }
+
+    /// Returns the source port field.
+    #[inline]
+    pub fn get_src_port(&self) -> u16 {
+        ((self.data[0] as u16) << 8) | (self.data[1] as u16)
+    }
+
+    /// Returns the destination port field.
+    #[inline]
+    pub fn get_dest_port(&self) -> u16 {
+        ((self.data[2] as u16) << 8) | (self.data[3] as u16)
+    }
+
+    /// Returns the sequence number field.
+    #[inline]
+    pub fn get_sequence_number(&self) -> u32 {
+        ((self.data[4] as u32) << 24)
+            | ((self.data[5] as u32) << 16)
+            | ((self.data[6] as u32) << 8)
+            | (self.data[7] as u32)
+    }
+
+    /// Returns the acknowledgment number field.
+    #[inline]
+    pub fn get_acknowledgment_number(&self) -> u32 {
+        ((self.data[8] as u32) << 24)
+            | ((self.data[9] as u32) << 16)
+            | ((self.data[10] as u32) << 8)
+            | (self.data[11] as u32)
+    }
+
+    /// Returns the data offset field.
+    #[inline]
+    pub fn get_data_offset(&self) -> u8 {
+        self.data[12] >> 4
+    }
+
+    /// Returns the reserved field.
+    #[inline]
+    pub fn get_reserved(&self) -> u8 {
+        self.data[12] & 0x0F
+    }
+
+    /// Returns the flags field.
+    #[inline]
+    pub fn get_flags(&self) -> u8 {
+        self.data[13]
+    }
+
+    /// Returns the window size field.
+    #[inline]
+    pub fn get_window_size(&self) -> u16 {
+        ((self.data[14] as u16) << 8) | (self.data[15] as u16)
+    }
+
+    /// Returns the checksum field.
+    #[inline]
+    pub fn get_checksum(&self) -> u16 {
+        ((self.data[16] as u16) << 8) | (self.data[17] as u16)
+    }
+
+    /// Returns the urgent pointer field.
+    #[inline]
+    pub fn get_urgent_pointer(&self) -> u16 {
+        ((self.data[18] as u16) << 8) | (self.data[19] as u16)
+    }
+}
+
+impl<'a> fmt::Debug for TcpParser<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("TcpSegment")
             .field("src_port", &self.get_src_port())
@@ -209,28 +233,31 @@ mod tests {
         let window_size = 1024;
         let urgent_pointer = 5;
 
-        // Create a new TCP segment from the raw data.
-        let mut tcp = TcpSegment::new(&mut data).unwrap();
-        tcp.set_src_port(src_port);
-        tcp.set_dest_port(dest_port);
-        tcp.set_sequence_number(sequence_number);
-        tcp.set_acknowledgment_number(acknowledgment_number);
-        tcp.set_reserved(reserved);
-        tcp.set_data_offset(data_offset);
-        tcp.set_flags(flags);
-        tcp.set_window_size(window_size);
-        tcp.set_urgent_pointer(urgent_pointer);
-        tcp.set_checksum(&src_ip, &dest_ip);
+        // Create a TcpBuilder.
+        let mut builder = TcpBuilder::new(&mut data).unwrap();
+        builder.set_src_port(src_port);
+        builder.set_dest_port(dest_port);
+        builder.set_sequence_number(sequence_number);
+        builder.set_acknowledgment_number(acknowledgment_number);
+        builder.set_reserved(reserved);
+        builder.set_data_offset(data_offset);
+        builder.set_flags(flags);
+        builder.set_window_size(window_size);
+        builder.set_urgent_pointer(urgent_pointer);
+        builder.set_checksum(&src_ip, &dest_ip);
+
+        // Create a TcpParser.
+        let parser = TcpParser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(tcp.get_src_port(), src_port);
-        assert_eq!(tcp.get_dest_port(), dest_port);
-        assert_eq!(tcp.get_sequence_number(), sequence_number);
-        assert_eq!(tcp.get_acknowledgment_number(), acknowledgment_number);
-        assert_eq!(tcp.get_reserved(), reserved);
-        assert_eq!(tcp.get_data_offset(), data_offset);
-        assert_eq!(tcp.get_flags(), flags);
-        assert_eq!(tcp.get_window_size(), window_size);
-        assert_eq!(tcp.get_urgent_pointer(), urgent_pointer);
+        assert_eq!(parser.get_src_port(), src_port);
+        assert_eq!(parser.get_dest_port(), dest_port);
+        assert_eq!(parser.get_sequence_number(), sequence_number);
+        assert_eq!(parser.get_acknowledgment_number(), acknowledgment_number);
+        assert_eq!(parser.get_reserved(), reserved);
+        assert_eq!(parser.get_data_offset(), data_offset);
+        assert_eq!(parser.get_flags(), flags);
+        assert_eq!(parser.get_window_size(), window_size);
+        assert_eq!(parser.get_urgent_pointer(), urgent_pointer);
     }
 }

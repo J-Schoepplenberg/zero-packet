@@ -10,13 +10,17 @@ Supported protocols:
 - Ethernet
 - ARP
 - IPv4
-- IPv6
 - TCP
 - UDP
 - ICMP
-- ICMPv6
 
 ## Usage
+
+### Install
+
+```bash
+cargo add zero-packet
+```
 
 ### PacketBuilder
 
@@ -41,4 +45,18 @@ packet_builder
     .ipv4(version, ihl, dscp, ecn, total_length, id, flags, fragment_offset, ttl, protocol, src_ip, dest_ip)?
     .udp(src_ip, src_port, dest_ip, dest_port, length)?
     .payload(payload)?;
-```  
+```
+
+### PacketParser
+
+Parsing any received byte slice for which we don't know ahead of time what type of packet it is.
+
+```Rust
+// Some byte slice that we have received.
+// We don't know yet what it contains.
+let packet = [..];
+
+// PacketParser which holds a reference to the byte slice.
+// Determines what protocol headers are present.
+let packet_parser = PacketParser::parse(&packet)?;
+```

@@ -2,45 +2,34 @@ use super::ethertypes::EtherTypes;
 use crate::utils::to_hex_string;
 use core::fmt;
 
-/// Represents an Ethernet frame.
-pub struct EthernetFrame<'a> {
+/// The minimum length of an Ethernet frame header in bytes.
+pub const ETHERNET_MIN_HEADER_LENGTH: usize = 14;
+
+/// The minimum length of an Ethernet frame in bytes.
+pub const ETHERNET_MIN_FRAME_LENGTH: usize = 64;
+
+/// Represents an Ethernet frame builder.
+pub struct EthernetBuilder<'a> {
     pub data: &'a mut [u8],
 }
 
-impl<'a> EthernetFrame<'a> {
-    /// The length of an Ethernet frame header in bytes.
-    pub const HEADER_LENGTH: usize = 14;
-
+impl<'a> EthernetBuilder<'a> {
     /// Creates a new `EthernetFrame` from the given slice.
     ///
     /// Returns an error if the smallest possible Ethernet header does not fit in the slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < ETHERNET_MIN_HEADER_LENGTH {
             return Err("Slice is too short to contain an Ethernet frame.");
         }
 
         Ok(Self { data })
     }
 
-    /// Returns a reference to the destination MAC address.
+    /// Returns the header length in bytes.
     #[inline]
-    pub fn get_dest_mac(&self) -> &[u8] {
-        &self.data[0..6]
-    }
-
-    /// Returns a reference to the source MAC address..
-    #[inline]
-    pub fn get_src_mac(&self) -> &[u8] {
-        &self.data[6..12]
-    }
-
-    /// Returns a reference to the EtherType field.
-    ///
-    /// EtherType indicates which protcol is encapsulated in the payload.
-    #[inline]
-    pub fn get_ethertype(&self) -> u16 {
-        ((self.data[12] as u16) << 8) | (self.data[13] as u16)
+    pub fn header_length(&self) -> usize {
+        ETHERNET_MIN_HEADER_LENGTH
     }
 
     /// Sets the destination MAC address.
@@ -75,7 +64,57 @@ impl<'a> EthernetFrame<'a> {
     }
 }
 
-impl<'a> fmt::Debug for EthernetFrame<'a> {
+/// Represents an Ethernet frame parser.
+#[derive(PartialEq)]
+pub struct EthernetParser<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> EthernetParser<'a> {
+    /// Creates a new `EthernetParser` from the given slice.
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Result<Self, &'static str> {
+        if data.len() < ETHERNET_MIN_HEADER_LENGTH {
+            return Err("Slice is too short to contain an Ethernet frame.");
+        }
+
+        Ok(Self { data })
+    }
+
+    /// Returns the header length in bytes.
+    #[inline]
+    pub fn header_length(&self) -> usize {
+        ETHERNET_MIN_HEADER_LENGTH
+    }
+
+    /// Returns a reference to the destination MAC address.
+    #[inline]
+    pub fn get_dest_mac(&self) -> &[u8] {
+        &self.data[0..6]
+    }
+
+    /// Returns a reference to the source MAC address..
+    #[inline]
+    pub fn get_src_mac(&self) -> &[u8] {
+        &self.data[6..12]
+    }
+
+    /// Returns a reference to the EtherType field.
+    ///
+    /// EtherType indicates which protcol is encapsulated in the payload.
+    #[inline]
+    pub fn get_ethertype(&self) -> u16 {
+        ((self.data[12] as u16) << 8) | (self.data[13] as u16)
+    }
+
+    /// Returns a reference to the payload.
+    #[inline]
+    pub fn payload(&self) -> &[u8] {
+        &self.data[ETHERNET_MIN_HEADER_LENGTH..]
+    }
+}
+
+impl<'a> fmt::Debug for EthernetParser<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EthernetFrame")
             .field("dest_mac", &to_hex_string(self.get_dest_mac()))
@@ -102,17 +141,20 @@ mod tests {
         let dest = [0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b];
         let ethertype = 2048;
 
-        // Create an Ethernet frame from the raw data.
-        let mut ethernet = EthernetFrame::new(&mut data).unwrap();
+        // Create an Ethernet frame builder from the raw data.
+        let mut builder = EthernetBuilder::new(&mut data).unwrap();
 
         // Set the fields.
-        ethernet.set_src_mac(&src);
-        ethernet.set_dest_mac(&dest);
-        ethernet.set_ethertype(ethertype);
+        builder.set_src_mac(&src);
+        builder.set_dest_mac(&dest);
+        builder.set_ethertype(ethertype);
+
+        // Create an Ethernet frame parser from the raw data.
+        let parser = EthernetParser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(ethernet.get_src_mac(), src);
-        assert_eq!(ethernet.get_dest_mac(), dest);
-        assert_eq!(ethernet.get_ethertype(), ethertype);
+        assert_eq!(parser.get_src_mac(), src);
+        assert_eq!(parser.get_dest_mac(), dest);
+        assert_eq!(parser.get_ethertype(), ethertype);
     }
 }

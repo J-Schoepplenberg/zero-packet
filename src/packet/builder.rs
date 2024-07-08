@@ -1,7 +1,7 @@
 use crate::{
-    datalink::{arp::ArpPacket, ethernet::EthernetFrame},
-    network::{icmp::IcmpPacket, ipv4::IPv4Packet},
-    transport::{tcp::TcpSegment, udp::UdpDatagram},
+    datalink::{arp::ArpBuilder, ethernet::{EthernetBuilder, ETHERNET_MIN_HEADER_LENGTH}},
+    network::{icmp::IcmpBuilder, ipv4::IPv4Builder},
+    transport::{tcp::TcpBuilder, udp::UdpBuilder},
 };
 
 /// A zero-allocation packet builder.
@@ -68,13 +68,13 @@ impl<'a> PacketBuilder<'a> {
         dest_mac: &[u8; 6],
         ethertype: u16,
     ) -> Result<&mut Self, &'static str> {
-        let mut ethernet_frame = EthernetFrame::new(self.data)?;
+        let mut ethernet_frame = EthernetBuilder::new(self.data)?;
 
         ethernet_frame.set_src_mac(src_mac);
         ethernet_frame.set_dest_mac(dest_mac);
         ethernet_frame.set_ethertype(ethertype);
 
-        self.header_len = EthernetFrame::HEADER_LENGTH;
+        self.header_len = ETHERNET_MIN_HEADER_LENGTH;
 
         Ok(self)
     }
@@ -100,7 +100,7 @@ impl<'a> PacketBuilder<'a> {
             return Err("Data too short to contain an ARP header.");
         }
 
-        let mut arp_packet = ArpPacket::new(&mut self.data[self.header_len..])?;
+        let mut arp_packet = ArpBuilder::new(&mut self.data[self.header_len..])?;
 
         arp_packet.set_htype(hardware_type);
         arp_packet.set_ptype(protocol_type);
@@ -141,7 +141,7 @@ impl<'a> PacketBuilder<'a> {
             return Err("Data too short to contain an IPv4 header.");
         }
 
-        let mut ipv4_packet = IPv4Packet::new(&mut self.data[self.header_len..])?;
+        let mut ipv4_packet = IPv4Builder::new(&mut self.data[self.header_len..])?;
 
         ipv4_packet.set_version(version);
         ipv4_packet.set_ihl(ihl);
@@ -185,7 +185,7 @@ impl<'a> PacketBuilder<'a> {
             return Err("Data too short to contain a TCP segment.");
         }
 
-        let mut tcp_packet = TcpSegment::new(&mut self.data[self.header_len..])?;
+        let mut tcp_packet = TcpBuilder::new(&mut self.data[self.header_len..])?;
 
         tcp_packet.set_src_port(src_port);
         tcp_packet.set_dest_port(dest_port);
@@ -220,7 +220,7 @@ impl<'a> PacketBuilder<'a> {
             return Err("Data too short to contain a UDP datagram.");
         }
 
-        let mut udp_packet = UdpDatagram::new(&mut self.data[self.header_len..])?;
+        let mut udp_packet = UdpBuilder::new(&mut self.data[self.header_len..])?;
 
         udp_packet.set_src_port(src_port);
         udp_packet.set_dest_port(dest_port);
@@ -242,7 +242,7 @@ impl<'a> PacketBuilder<'a> {
             return Err("Data too short to contain an ICMP packet.");
         }
 
-        let mut icmp_packet = IcmpPacket::new(&mut self.data[self.header_len..])?;
+        let mut icmp_packet = IcmpBuilder::new(&mut self.data[self.header_len..])?;
 
         icmp_packet.set_type(icmp_type);
         icmp_packet.set_code(icmp_code);
@@ -263,9 +263,6 @@ mod tests {
         // Raw packet data.
         let mut packet = [0u8; 42];
 
-        // Packet builder.
-        let mut packet_builder = PacketBuilder::new(&mut packet);
-
         // Expected output given the chosen values.
         let should_be = [
             255, 255, 255, 255, 255, 255, 52, 151, 246, 148, 2, 15, 8, 6, 0, 1, 8, 0, 6, 4, 0, 1,
@@ -274,6 +271,9 @@ mod tests {
 
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
+            // Packet builder.
+            let mut packet_builder = PacketBuilder::new(&mut packet);
+
             // Build the packet.
             packet_builder
                 .ethernet(
@@ -308,9 +308,6 @@ mod tests {
         // Raw packet data.
         let mut packet = [0u8; 54];
 
-        // Packet builder.
-        let mut packet_builder = PacketBuilder::new(&mut packet);
-
         // Expected output given the chosen values.
         let should_be = [
             4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
@@ -320,6 +317,9 @@ mod tests {
 
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
+            // Packet builder.
+            let mut packet_builder = PacketBuilder::new(&mut packet);
+
             // Build the packet.
             packet_builder
                 .ethernet(
@@ -371,9 +371,6 @@ mod tests {
         // Raw packet data.
         let mut packet = [0u8; 54];
 
-        // Packet builder.
-        let mut packet_builder = PacketBuilder::new(&mut packet);
-
         // Expected output given the chosen values.
         let should_be = [
             4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
@@ -383,6 +380,9 @@ mod tests {
 
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
+            // Packet builder.
+            let mut packet_builder = PacketBuilder::new(&mut packet);
+
             // Build the packet.
             packet_builder
                 .ethernet(
@@ -420,19 +420,20 @@ mod tests {
     #[test]
     fn test_icmp_in_ipv4_in_ethernet() {
         // Raw packet data.
-        let mut packet = [0u8; 42];
-
-        // Packet builder.
-        let mut packet_builder = PacketBuilder::new(&mut packet);
+        let mut packet = [0u8; 64];
 
         // Expected output given the chosen values.
         let should_be = [
             4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
             112, 57, 123, 1, 87, 118, 192, 168, 1, 1, 192, 168, 1, 2, 8, 0, 247, 255, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
 
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
+            // Packet builder.
+            let mut packet_builder = PacketBuilder::new(&mut packet);
+
             // Build the packet.
             packet_builder
                 .ethernet(
