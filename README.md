@@ -24,10 +24,10 @@ cargo add zero-packet
 
 ### PacketBuilder
 
-If you want to create network packets manually, look no further.
+If you want to create network packets manually and efficiently, look no further.
 
 ```Rust
-// Raw packet that we will mutate.
+// Raw packet that we will mutate in-place.
 // Ethernet header (14 bytes) + IPv4 header (20 bytes) + UDP header (8 bytes) = 42 bytes.
 let mut packet = [0u8; 53]
 
@@ -56,7 +56,31 @@ Parsing any received byte slice for which we don't know ahead of time what type 
 // We don't know yet what it contains.
 let packet = [..];
 
-// PacketParser which holds a reference to the byte slice.
-// Determines what protocol headers are present.
-let packet_parser = PacketParser::parse(&packet)?;
+// PacketParser is a zero-copy packet parser.
+// The new method is very lenient and accepts any slice.
+// Does not check any fields.
+let lax_parsing = PacketParser::new(&packet);
+
+// The parse method determines on its own what protocol headers are present.
+// The method is strict about what input it accepts and validates certain fields.
+let strict_parsing = PacketParser::parse(&packet)?;
+
+// Now it is as easy as this.
+if let Some(ethernet) = strict_parsing.ethernet {
+    let ethertype = ethernet.get_ethertype();
+    // ...
+}
+
+// Or this.
+if let Some(ipv4) = strict_parsing.ipv4 {
+    let src_ip = ipv4.get_src_ip();
+    // ...
+}
 ```
+
+## Roadmap
+
+Upcoming features:
+- [ ] IPv6
+- [ ] ICMPv6
+- [ ] IPsec
