@@ -1,19 +1,19 @@
 use crate::network::checksum::{internet_checksum, pseudo_header};
 use core::fmt;
 
+/// The length of a UDP header in bytes.
+pub const UDP_HEADER_LENGTH: usize = 8;
+
 /// Represents a UDP packet.
 pub struct UdpBuilder<'a> {
     pub data: &'a mut [u8],
 }
 
 impl<'a> UdpBuilder<'a> {
-    /// The minimum length of a UDP header in bytes.
-    pub const HEADER_LENGTH: usize = 8;
-
     /// Creates a new `UdpPacket` from the given data slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < UDP_HEADER_LENGTH {
             return Err("Slice is too short to contain a UDP header.");
         }
 
@@ -23,7 +23,7 @@ impl<'a> UdpBuilder<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_length(&self) -> usize {
-        Self::HEADER_LENGTH
+        UDP_HEADER_LENGTH
     }
 
     /// Sets the source port field.
@@ -70,13 +70,10 @@ pub struct UdpParser<'a> {
 }
 
 impl<'a> UdpParser<'a> {
-    /// The minimum length of a UDP header in bytes.
-    pub const HEADER_LENGTH: usize = 8;
-
     /// Creates a new `UdpPacket` from the given data slice.
     #[inline]
     pub fn new(data: &'a [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < UDP_HEADER_LENGTH {
             return Err("Slice is too short to contain a UDP header.");
         }
 
@@ -86,7 +83,13 @@ impl<'a> UdpParser<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_length(&self) -> usize {
-        Self::HEADER_LENGTH
+        UDP_HEADER_LENGTH
+    }
+
+    /// Returns the payload.
+    #[inline]
+    pub fn get_payload(&self) -> &[u8] {
+        &self.data[UDP_HEADER_LENGTH..]
     }
 
     /// Returns the source port field.

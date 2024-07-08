@@ -1,15 +1,16 @@
 [package]
 name = "zero-packet"
-version = "1.0.0"
+version = "0.0.1"
 authors = ["Jannis Schoepplenberg <jschoe@proton.me>"]
-description = "Zero-allocation, zero-copy, zero-dependency, zero-unsafe network packet library in Rust."
+description = "A zero-copy Rust library that builds and parses network packets in-place."
+keywords = ["networking", "packets", "zero-copy", "no-allocation", "parsing"]
+categories = ["networking", "packets", "parsing" "zero-copy", "packet-processing"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/J-Schoepplenberg/zero-packet"
 edition = "2021"
 rust-version = "1.75"
 
 [dev-dependencies]
 allocation-counter = "0.8.1"
 criterion = "0.5.1"
-
-[[bench]]
-name = "bench"
-harness = false

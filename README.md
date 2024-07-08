@@ -1,6 +1,6 @@
 # zero-packet
 
-Super simple, highly efficient Rust library that builds and parses network packets in-place with zero overhead.
+Super simple library to efficiently build and parse network packets in-place with zero overhead.
 
 No async, no allocations, no dependencies, no macros, no std, no unsafe. It simply cannot be easier.
 
@@ -57,25 +57,29 @@ Parsing any received byte slice for which we don't know ahead of time what type 
 let packet = [..];
 
 // PacketParser is a zero-copy packet parser.
-// The new method is very lenient and accepts any slice.
-// Does not check any fields.
-let lax_parsing = PacketParser::new(&packet);
-
-// The parse method determines on its own what protocol headers are present.
+// The `parse` method determines on its own what protocol headers are present.
 // The method is strict about what input it accepts and validates certain fields.
-let strict_parsing = PacketParser::parse(&packet)?;
+let parsed = PacketParser::parse(&packet)?;
 
 // Now it is as easy as this.
-if let Some(ethernet) = strict_parsing.ethernet {
+if let Some(ethernet) = parsed.ethernet {
     let ethertype = ethernet.get_ethertype();
     // ...
 }
 
 // Or this.
-if let Some(ipv4) = strict_parsing.ipv4 {
+if let Some(ipv4) = parsed.ipv4 {
     let src_ip = ipv4.get_src_ip();
     // ...
 }
+
+// Alternatively, just parse headers directly manually.
+// By adjusting the index of the slice you can find different headers.
+if let Some(tcp) = TcpParser::new(&packet)? {
+    let src_port = tcp.get_src_port();
+    // ...
+}
+
 ```
 
 ## Roadmap
@@ -84,3 +88,4 @@ Upcoming features:
 - [ ] IPv6
 - [ ] ICMPv6
 - [ ] IPsec
+- [ ] ...

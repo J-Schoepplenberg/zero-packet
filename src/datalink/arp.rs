@@ -1,19 +1,19 @@
 use crate::misc::to_hex_string;
 use core::fmt;
 
+/// The length of an ARP header in bytes.
+pub const ARP_HEADER_LENGTH: usize = 28;
+
 /// Represents an ARP header.
 pub struct ArpBuilder<'a> {
     pub data: &'a mut [u8],
 }
 
 impl<'a> ArpBuilder<'a> {
-    /// The minimum length of an ARP header in bytes.
-    pub const HEADER_LENGTH: usize = 28;
-
     /// Creates a new `Arp` from the given slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < ARP_HEADER_LENGTH {
             return Err("Slice is too short to contain an ARP header.");
         }
 
@@ -23,7 +23,7 @@ impl<'a> ArpBuilder<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_length(&self) -> usize {
-        Self::HEADER_LENGTH
+        ARP_HEADER_LENGTH
     }
 
     /// Sets the hardware type field.
@@ -124,13 +124,10 @@ pub struct ArpParser<'a> {
 }
 
 impl<'a> ArpParser<'a> {
-/// The minimum length of an ARP header in bytes.
-    pub const HEADER_LENGTH: usize = 28;
-
     /// Creates a new `Arp` from the given slice.
     #[inline]
     pub fn new(data: &'a [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < ARP_HEADER_LENGTH {
             return Err("Slice is too short to contain an ARP header.");
         }
 
@@ -140,7 +137,7 @@ impl<'a> ArpParser<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_length(&self) -> usize {
-        Self::HEADER_LENGTH
+        ARP_HEADER_LENGTH
     }
 
     /// Returns the hardware type field.

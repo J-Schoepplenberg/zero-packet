@@ -1,4 +1,3 @@
-use super::ethertypes::EtherTypes;
 use crate::misc::to_hex_string;
 use core::fmt;
 
@@ -119,10 +118,7 @@ impl<'a> fmt::Debug for EthernetParser<'a> {
         f.debug_struct("EthernetFrame")
             .field("dest_mac", &to_hex_string(self.get_dest_mac()))
             .field("src_mac", &to_hex_string(self.get_src_mac()))
-            .field(
-                "ethertype",
-                &EtherTypes::get_ethertype(self.get_ethertype()),
-            )
+            .field("ethertype", &self.get_ethertype())
             .finish()
     }
 }

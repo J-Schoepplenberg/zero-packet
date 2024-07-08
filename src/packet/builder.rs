@@ -1,5 +1,8 @@
 use crate::{
-    datalink::{arp::ArpBuilder, ethernet::{EthernetBuilder, ETHERNET_MIN_HEADER_LENGTH}},
+    datalink::{
+        arp::ArpBuilder,
+        ethernet::{EthernetBuilder, ETHERNET_MIN_HEADER_LENGTH},
+    },
     network::{icmp::IcmpBuilder, ipv4::IPv4Builder},
     transport::{tcp::TcpBuilder, udp::UdpBuilder},
 };
@@ -424,8 +427,8 @@ mod tests {
 
         // Expected output given the chosen values.
         let should_be = [
-            4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
-            112, 57, 123, 1, 87, 118, 192, 168, 1, 1, 192, 168, 1, 2, 8, 0, 247, 255, 0, 0, 0, 0,
+            4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 69, 143, 48, 57, 212, 49,
+            112, 57, 123, 1, 71, 118, 192, 168, 1, 1, 192, 168, 1, 2, 8, 0, 247, 255, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
 
@@ -443,7 +446,7 @@ mod tests {
                 )
                 .unwrap()
                 .ipv4(
-                    99,
+                    4,
                     5,
                     99,
                     123,

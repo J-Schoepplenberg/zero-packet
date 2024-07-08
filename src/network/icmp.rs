@@ -1,19 +1,22 @@
 use super::checksum::internet_checksum;
 use core::fmt;
 
+/// The length of an ICMP header in bytes.
+pub const ICMP_HEADER_LENGTH: usize = 8;
+
+/// The maximum valid ICMP type.
+pub const ICMP_MAX_VALID_CODE: u8 = 15;
+
 /// Represents an ICMP header.
 pub struct IcmpBuilder<'a> {
     pub data: &'a mut [u8],
 }
 
 impl<'a> IcmpBuilder<'a> {
-    /// The minimum length of an ICMP header in bytes.
-    const HEADER_LENGTH: usize = 8;
-
     /// Creates a new `Icmp` from the given data slice.
     #[inline]
     pub fn new(data: &'a mut [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < ICMP_HEADER_LENGTH {
             return Err("Slice is too short to contain an ICMP header.");
         }
 
@@ -23,7 +26,7 @@ impl<'a> IcmpBuilder<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_length(&self) -> usize {
-        Self::HEADER_LENGTH
+        ICMP_HEADER_LENGTH
     }
 
     /// Returns the identifier field.
@@ -57,13 +60,10 @@ pub struct IcmpParser<'a> {
 }
 
 impl<'a> IcmpParser<'a> {
-    /// The minimum length of an ICMP header in bytes.
-    const HEADER_LENGTH: usize = 8;
-
     /// Creates a new `Icmp` from the given data slice.
     #[inline]
     pub fn new(data: &'a [u8]) -> Result<Self, &'static str> {
-        if data.len() < Self::HEADER_LENGTH {
+        if data.len() < ICMP_HEADER_LENGTH {
             return Err("Slice is too short to contain an ICMP header.");
         }
 
@@ -73,7 +73,7 @@ impl<'a> IcmpParser<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_length(&self) -> usize {
-        Self::HEADER_LENGTH
+        ICMP_HEADER_LENGTH
     }
 
     /// Returns the type field.
@@ -96,12 +96,12 @@ impl<'a> IcmpParser<'a> {
 
     #[inline]
     pub fn get_header(&self) -> &'a [u8] {
-        &self.data[..Self::HEADER_LENGTH]
+        &self.data[..ICMP_HEADER_LENGTH]
     }
 
     #[inline]
     pub fn get_payload(&self) -> &'a [u8] {
-        &self.data[Self::HEADER_LENGTH..]
+        &self.data[ICMP_HEADER_LENGTH..]
     }
 }
 

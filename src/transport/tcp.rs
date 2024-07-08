@@ -121,7 +121,7 @@ impl<'a> TcpParser<'a> {
         Ok(Self { data })
     }
 
-    /// Returns the header length in bytes.
+    /// Returns the header length in bytes by multiplying the data offset.
     #[inline]
     pub fn header_length(&self) -> usize {
         self.get_data_offset() as usize * 4
