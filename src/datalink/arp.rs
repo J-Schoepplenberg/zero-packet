@@ -1,4 +1,4 @@
-use crate::utils::to_hex_string;
+use crate::misc::to_hex_string;
 use core::fmt;
 
 /// Represents an ARP header.

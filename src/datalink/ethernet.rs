@@ -1,5 +1,5 @@
 use super::ethertypes::EtherTypes;
-use crate::utils::to_hex_string;
+use crate::misc::to_hex_string;
 use core::fmt;
 
 /// The minimum length of an Ethernet frame header in bytes.

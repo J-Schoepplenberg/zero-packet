@@ -4,7 +4,7 @@ use crate::{
     transport::{tcp::TcpBuilder, udp::UdpBuilder},
 };
 
-/// A zero-allocation packet builder.
+/// A zero-copy packet builder.
 pub struct PacketBuilder<'a> {
     pub data: &'a mut [u8],
     header_len: usize,
