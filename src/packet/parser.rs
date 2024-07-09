@@ -70,7 +70,7 @@ impl<'a> PacketParser<'a> {
         let arp_parser = ArpParser::new(data)?;
 
         if arp_parser.get_oper() > 2 {
-            return Err("ARP oper field is invalid, expected request (1) or reply (2).");
+            return Err("ARP operation field is invalid, expected request (1) or reply (2).");
         }
 
         self.arp = Some(arp_parser);
@@ -92,6 +92,10 @@ impl<'a> PacketParser<'a> {
 
         if header_len < IPV4_MIN_HEADER_LENGTH {
             return Err("IPv4 IHL field is invalid. Indicated header length is too short.");
+        }
+
+        if data.len() < header_len {
+            return Err("IPv4 header length is invalid. Indicated header length is too long.");
         }
 
         self.ipv4 = Some(ipv4_parser);
