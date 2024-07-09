@@ -1,5 +1,5 @@
-use crate::misc::to_hex_string;
-use core::fmt;
+use crate::misc::{to_hex_string, IpFormatter};
+use core::{fmt, str::from_utf8};
 
 /// The length of an ARP header in bytes.
 pub const ARP_HEADER_LENGTH: usize = 28;
@@ -217,24 +217,22 @@ impl fmt::Debug for ArpParser<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sender_ip = self.get_spa();
         let target_ip = self.get_tpa();
-        let sender_formatted = format!(
-            "{}.{}.{}.{}",
-            sender_ip[0], sender_ip[1], sender_ip[2], sender_ip[3]
-        );
-        let target_formatted = format!(
-            "{}.{}.{}.{}",
-            target_ip[0], target_ip[1], target_ip[2], target_ip[3]
-        );
+        let mut sha_buf = [0u8; 18];
+        let sha_len = to_hex_string(self.get_sha(), &mut sha_buf);
+        let sha_hex = from_utf8(&sha_buf[..sha_len]).unwrap();
+        let mut tha_buf = [0u8; 18];
+        let tha_len = to_hex_string(self.get_tha(), &mut tha_buf);
+        let tha_hex = from_utf8(&tha_buf[..tha_len]).unwrap();
         f.debug_struct("Arp")
             .field("hardware_type", &self.get_htype())
             .field("protocol_type", &self.get_ptype())
             .field("hardware_address_length", &self.get_hlen())
             .field("protocol_address_length", &self.get_plen())
             .field("operation", &self.get_oper())
-            .field("sender_hardware_address", &to_hex_string(self.get_sha()))
-            .field("sender_protocol_address", &sender_formatted)
-            .field("target_hardware_address", &to_hex_string(self.get_tha()))
-            .field("target_protocol_address", &target_formatted)
+            .field("sender_hardware_address", &sha_hex)
+            .field("sender_protocol_address", &IpFormatter(sender_ip))
+            .field("target_hardware_address", &tha_hex)
+            .field("target_protocol_address", &IpFormatter(target_ip))
             .finish()
     }
 }
@@ -261,7 +259,7 @@ mod tests {
         builder.set_spa(&[12, 13, 14, 15]);
         builder.set_tha(&[16, 17, 18, 19, 20, 21]);
         builder.set_tpa(&[22, 23, 24, 25]);
-        
+
         let parser = ArpParser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.

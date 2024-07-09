@@ -1,5 +1,7 @@
+use core::fmt::{self};
+
 /// Common EtherTypes.
-/// 
+///
 /// See: <https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml.>.
 #[repr(u16)]
 #[derive(Debug, PartialEq)]
@@ -99,13 +101,31 @@ impl From<u8> for IcmpType {
     }
 }
 
-/// Convert a byte slice to a hex string
-/// 
-/// Used when debug printing mac addresses to the console.
-pub fn to_hex_string(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<String>>()
-        .join(":")
+/// Workaround for the lack of heap support in `no_std`.
+pub fn to_hex_string(bytes: &[u8], buffer: &mut [u8]) -> usize {
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+
+    let mut buffer_index = 0;
+    for (i, &byte) in bytes.iter().enumerate() {
+        if i != 0 {
+            buffer[buffer_index] = b':';
+            buffer_index += 1;
+        }
+
+        buffer[buffer_index] = HEX_CHARS[(byte >> 4) as usize];
+        buffer[buffer_index + 1] = HEX_CHARS[(byte & 0xf) as usize];
+        buffer_index += 2;
+    }
+
+    buffer_index
+}
+
+/// Wrapper to format an IP address.
+pub struct IpFormatter<'a>(pub &'a [u8]);
+
+impl fmt::Debug for IpFormatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ip = self.0;
+        write!(f, "{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3])
+    }
 }

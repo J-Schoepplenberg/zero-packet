@@ -1,5 +1,5 @@
 use crate::misc::to_hex_string;
-use core::fmt;
+use core::{fmt, str::from_utf8};
 
 /// The minimum length of an Ethernet frame header in bytes.
 pub const ETHERNET_MIN_HEADER_LENGTH: usize = 14;
@@ -115,9 +115,15 @@ impl<'a> EthernetParser<'a> {
 
 impl<'a> fmt::Debug for EthernetParser<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d_buf = [0u8; 18];
+        let d_len = to_hex_string(self.get_dest_mac(), &mut d_buf);
+        let d_hex = from_utf8(&d_buf[..d_len]).unwrap();
+        let mut s_buf = [0u8; 18];
+        let s_len = to_hex_string(self.get_src_mac(), &mut s_buf);
+        let s_hex = from_utf8(&s_buf[..s_len]).unwrap();
         f.debug_struct("EthernetFrame")
-            .field("dest_mac", &to_hex_string(self.get_dest_mac()))
-            .field("src_mac", &to_hex_string(self.get_src_mac()))
+            .field("dest_mac", &d_hex)
+            .field("src_mac", &s_hex)
             .field("ethertype", &self.get_ethertype())
             .finish()
     }

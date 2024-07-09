@@ -1,4 +1,5 @@
 use super::checksum::internet_checksum;
+use crate::misc::IpFormatter;
 use core::fmt;
 
 /// The length of an IPv4 header in bytes without options.
@@ -109,7 +110,7 @@ impl<'a> IPv4Builder<'a> {
     }
 
     /// Calculates the checksum field.
-    /// 
+    ///
     /// Only includes the header.
     #[inline]
     pub fn set_checksum(&mut self) {
@@ -131,7 +132,7 @@ impl<'a> IPv4Parser<'a> {
     /// Creates a new `IPv4Packet` from the given data slice.
     #[inline]
     pub fn new(data: &'a [u8]) -> Result<Self, &'static str> {
-        if data.len() < IPV4_MIN_HEADER_LENGTH{
+        if data.len() < IPV4_MIN_HEADER_LENGTH {
             return Err("Slice is too short to contain an IPv4 header.");
         }
 
@@ -239,11 +240,6 @@ impl<'a> fmt::Debug for IPv4Parser<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let src_ip = self.get_src_ip();
         let dest_ip = self.get_dest_ip();
-        let src_formatted = format!("{}.{}.{}.{}", src_ip[0], src_ip[1], src_ip[2], src_ip[3]);
-        let dest_formatted = format!(
-            "{}.{}.{}.{}",
-            dest_ip[0], dest_ip[1], dest_ip[2], dest_ip[3]
-        );
         f.debug_struct("IPv4Packet")
             .field("version", &self.get_version())
             .field("ihl", &self.get_ihl())
@@ -256,8 +252,8 @@ impl<'a> fmt::Debug for IPv4Parser<'a> {
             .field("ttl", &self.get_ttl())
             .field("protocol", &self.get_protocol())
             .field("checksum", &self.get_checksum())
-            .field("src_ip", &src_formatted)
-            .field("dest_ip", &dest_formatted)
+            .field("src_ip", &IpFormatter(&src_ip))
+            .field("dest_ip", &IpFormatter(&dest_ip))
             .finish()
     }
 }

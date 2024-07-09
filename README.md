@@ -16,10 +16,19 @@ Supported protocols:
 
 ## Usage
 
-### Install
+## Getting started
+
+Install via your command line:
 
 ```bash
 cargo add zero-packet
+```
+
+Or add the following to your `Cargo.toml`:
+
+```toml
+[dependencies]
+zero-packet = "0.0.1"
 ```
 
 ### PacketBuilder
