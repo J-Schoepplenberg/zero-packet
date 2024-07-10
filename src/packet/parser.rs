@@ -1,47 +1,47 @@
 use crate::{
     datalink::{
-        arp::ArpParser,
-        ethernet::{EthernetParser, ETHERNET_MIN_FRAME_LENGTH},
+        arp::ArpReader,
+        ethernet::{EthernetReader, ETHERNET_MIN_FRAME_LENGTH},
     },
     misc::{EtherType, IcmpType, IpProtocol},
     network::{
         checksum::verify_internet_checksum,
-        icmp::{IcmpParser, ICMP_MAX_VALID_CODE},
-        ipv4::{IPv4Parser, IPV4_MIN_HEADER_LENGTH},
+        icmp::{IcmpReader, ICMP_MAX_VALID_CODE},
+        ipv4::{IPv4Reader, IPV4_MIN_HEADER_LENGTH},
     },
     transport::{
-        tcp::{TcpParser, TCP_MIN_HEADER_LENGTH},
-        udp::UdpParser,
+        tcp::{TcpReader, TCP_MIN_HEADER_LENGTH},
+        udp::UdpReader,
     },
 };
 
 /// A zero-copy packet parser.
 #[derive(Debug)]
 pub struct PacketParser<'a> {
-    pub ethernet: Option<EthernetParser<'a>>,
-    pub arp: Option<ArpParser<'a>>,
-    pub ipv4: Option<IPv4Parser<'a>>,
-    pub tcp: Option<TcpParser<'a>>,
-    pub udp: Option<UdpParser<'a>>,
-    pub icmp: Option<IcmpParser<'a>>,
+    pub ethernet: Option<EthernetReader<'a>>,
+    pub arp: Option<ArpReader<'a>>,
+    pub ipv4: Option<IPv4Reader<'a>>,
+    pub tcp: Option<TcpReader<'a>>,
+    pub udp: Option<UdpReader<'a>>,
+    pub icmp: Option<IcmpReader<'a>>,
 }
 
 impl<'a> PacketParser<'a> {
     /// Parses a raw Ethernet frame.
     ///
     /// Is strict about what input it accepts.
-    pub fn parse(packet: &'a [u8]) -> Result<Self, &'static str> {
-        if packet.len() < ETHERNET_MIN_FRAME_LENGTH {
+    pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
+        if bytes.len() < ETHERNET_MIN_FRAME_LENGTH {
             return Err("Slice needs to be least 64 bytes long to be a valid Ethernet frame.");
         }
 
-        let ethernet_parser = EthernetParser::new(packet)?;
-        let header_len = ethernet_parser.header_len();
-        let ethertype = ethernet_parser.ethertype();
+        let reader = EthernetReader::new(bytes)?;
+        let header_len = reader.header_len();
+        let ethertype = reader.ethertype();
 
         let mut parser = PacketParser {
             arp: None,
-            ethernet: Some(ethernet_parser),
+            ethernet: Some(reader),
             ipv4: None,
             tcp: None,
             udp: None,
@@ -49,8 +49,8 @@ impl<'a> PacketParser<'a> {
         };
 
         match EtherType::from(ethertype) {
-            EtherType::ARP => parser.parse_arp(&packet[header_len..])?,
-            EtherType::IPv4 => parser.parse_ipv4(&packet[header_len..])?,
+            EtherType::ARP => parser.parse_arp(&bytes[header_len..])?,
+            EtherType::IPv4 => parser.parse_ipv4(&bytes[header_len..])?,
             EtherType::IPv6 => todo!("IPv6 not supported yet."),
             EtherType::Unknown(_) => return Err("Unknown or unsupported EtherType"),
         }
@@ -66,44 +66,44 @@ impl<'a> PacketParser<'a> {
     ///
     /// Theoretically, it can also be used with other combinations of protocols.
     #[inline]
-    pub fn parse_arp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
-        let arp_parser = ArpParser::new(data)?;
+    pub fn parse_arp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = ArpReader::new(bytes)?;
 
-        if arp_parser.oper() > 2 {
+        if reader.oper() > 2 {
             return Err("ARP operation field is invalid, expected request (1) or reply (2).");
         }
 
-        self.arp = Some(arp_parser);
+        self.arp = Some(reader);
 
         Ok(())
     }
 
     /// Parses a IPv4 header.
     #[inline]
-    pub fn parse_ipv4(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
-        let ipv4_parser = IPv4Parser::new(data)?;
+    pub fn parse_ipv4(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = IPv4Reader::new(bytes)?;
 
-        if ipv4_parser.version() != 4 {
+        if reader.version() != 4 {
             return Err("IPv4 version field is invalid. Expected version 4.");
         }
 
-        let header_len = ipv4_parser.header_len();
-        let protocol = ipv4_parser.protocol();
+        let header_len = reader.header_len();
+        let protocol = reader.protocol();
 
         if header_len < IPV4_MIN_HEADER_LENGTH {
             return Err("IPv4 IHL field is invalid. Indicated header length is too short.");
         }
 
-        if data.len() < header_len {
+        if bytes.len() < header_len {
             return Err("IPv4 header length is invalid. Indicated header length is too long.");
         }
 
-        self.ipv4 = Some(ipv4_parser);
+        self.ipv4 = Some(reader);
 
         match IpProtocol::from(protocol) {
-            IpProtocol::ICMP => self.parse_icmp(&data[header_len..])?,
-            IpProtocol::TCP => self.parse_tcp(&data[header_len..])?,
-            IpProtocol::UDP => self.parse_udp(&data[header_len..])?,
+            IpProtocol::ICMP => self.parse_icmp(&bytes[header_len..])?,
+            IpProtocol::TCP => self.parse_tcp(&bytes[header_len..])?,
+            IpProtocol::UDP => self.parse_udp(&bytes[header_len..])?,
             IpProtocol::Unknown(_) => return Err("Unknown IPv4 Protocol."),
         }
 
@@ -112,54 +112,54 @@ impl<'a> PacketParser<'a> {
 
     /// Parses a ICMP packet.
     #[inline]
-    pub fn parse_icmp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
-        let icmp_parser = IcmpParser::new(data)?;
+    pub fn parse_icmp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = IcmpReader::new(bytes)?;
 
-        if IcmpType::from(icmp_parser.icmp_type()) == IcmpType::Unknown {
+        if IcmpType::from(reader.icmp_type()) == IcmpType::Unknown {
             return Err("ICMP type field is invalid.");
         }
 
-        if icmp_parser.icmp_code() > ICMP_MAX_VALID_CODE {
+        if reader.icmp_code() > ICMP_MAX_VALID_CODE {
             return Err("ICMP code field is invalid.");
         }
 
-        self.icmp = Some(icmp_parser);
+        self.icmp = Some(reader);
 
         Ok(())
     }
 
     /// Parses a TCP header.
     #[inline]
-    pub fn parse_tcp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
-        let tcp_parser = TcpParser::new(data)?;
+    pub fn parse_tcp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = TcpReader::new(bytes)?;
 
-        if tcp_parser.header_len() < TCP_MIN_HEADER_LENGTH {
+        if reader.header_len() < TCP_MIN_HEADER_LENGTH {
             return Err("TCP data offset field is invalid. Indicated header length is too short.");
         }
 
-        if tcp_parser.flags() == 0 {
+        if reader.flags() == 0 {
             return Err("TCP flags field is invalid.");
         }
 
-        self.tcp = Some(tcp_parser);
+        self.tcp = Some(reader);
 
         Ok(())
     }
 
     /// Parses a UDP header.
     #[inline]
-    pub fn parse_udp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
-        let udp_parser = UdpParser::new(data)?;
+    pub fn parse_udp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = UdpReader::new(bytes)?;
 
-        let header_len = udp_parser.header_len();
-        let payload_len = udp_parser.payload().len();
-        let length_field = udp_parser.length() as usize;
+        let header_len = reader.header_len();
+        let payload_len = reader.payload().len();
+        let length_field = reader.length() as usize;
 
         if length_field != header_len + payload_len {
             return Err("UDP length field is invalid. Does not match actual length.");
         }
 
-        self.udp = Some(udp_parser);
+        self.udp = Some(reader);
 
         Ok(())
     }
@@ -174,19 +174,19 @@ impl<'a> PacketParser<'a> {
         }
 
         if let Some(icmp) = &self.icmp {
-            if !verify_internet_checksum(icmp.data) {
+            if !verify_internet_checksum(icmp.bytes) {
                 return Err("ICMP checksum is invalid.");
             }
         }
 
         if let Some(tcp) = &self.tcp {
-            if !verify_internet_checksum(tcp.data) {
+            if !verify_internet_checksum(tcp.bytes) {
                 return Err("TCP checksum is invalid.");
             }
         }
 
         if let Some(udp) = &self.udp {
-            if !verify_internet_checksum(udp.data) {
+            if !verify_internet_checksum(udp.bytes) {
                 return Err("UDP checksum is invalid.");
             }
         }

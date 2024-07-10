@@ -1,10 +1,10 @@
 use crate::{
     datalink::{
-        arp::ArpBuilder,
-        ethernet::{EthernetBuilder, ETHERNET_MIN_HEADER_LENGTH},
+        arp::ArpWriter,
+        ethernet::{EthernetWriter, ETHERNET_MIN_HEADER_LENGTH},
     },
-    network::{icmp::IcmpBuilder, ipv4::IPv4Builder},
-    transport::{tcp::TcpBuilder, udp::UdpBuilder},
+    network::{icmp::IcmpWriter, ipv4::IPv4Writer},
+    transport::{tcp::TcpWriter, udp::UdpWriter},
 };
 
 // PacketBuilder State Machine:
@@ -24,7 +24,7 @@ use crate::{
 //    |   TcpHeader  UdpHeader  IcmpHeader
 //    |      |         |           |
 //    |      v         v           v
-//    +----> Payload <------------+
+//    +-----------> Payload <------+
 
 /// Zero-sized struct representing the `Raw` state of the `PacketBuilder` state machine.
 pub struct RawState;
@@ -59,7 +59,7 @@ pub struct PayloadState;
 /// These stack allocations are very cheap and most likely optimized away by the compiler.
 /// The state types are zero-sized types (ZSTs) and don't consume any memory.
 pub struct PacketBuilder<'a, State> {
-    data: &'a mut [u8],
+    bytes: &'a mut [u8],
     header_len: usize,
     _state: State,
 }
@@ -73,37 +73,33 @@ impl<'a, State> PacketBuilder<'a, State> {
 
     /// Returns the length of the payload in bytes.
     ///
-    /// The payload is the data after all headers.
-    ///
-    /// Should be called after all headers have been set.
+    /// Payload is the data after all headers.
     #[inline]
     pub fn payload_len(&self) -> usize {
-        self.data.len() - self.header_len
+        self.bytes.len() - self.header_len
     }
 
-    /// Returns the payload.
+    /// Returns a reference to the payload.
     ///
-    /// The payload is the data after all headers.
-    ///
-    /// Should be called after all headers have been set.
+    /// Payload is the data after all headers.
     #[inline]
     pub fn payload(&self) -> &[u8] {
-        &self.data[self.header_len..]
+        &self.bytes[self.header_len..]
     }
 
     /// Returns a reference to the data slice.
     #[inline]
     pub fn build(self) -> &'a [u8] {
-        self.data
+        self.bytes
     }
 }
 
 impl<'a> PacketBuilder<'a, RawState> {
     /// Creates a new `PacketBuilder` from the given data slice.
     #[inline]
-    pub fn new(data: &'a mut [u8]) -> PacketBuilder<'a, RawState> {
+    pub fn new(bytes: &'a mut [u8]) -> PacketBuilder<'a, RawState> {
         PacketBuilder {
-            data,
+            bytes,
             header_len: 0,
             _state: RawState,
         }
@@ -119,7 +115,7 @@ impl<'a> PacketBuilder<'a, RawState> {
         dest_mac: &[u8; 6],
         ethertype: u16,
     ) -> Result<PacketBuilder<'a, EthernetHeaderState>, &'static str> {
-        let mut ethernet_frame = EthernetBuilder::new(self.data)?;
+        let mut ethernet_frame = EthernetWriter::new(self.bytes)?;
 
         ethernet_frame.set_src_mac(src_mac);
         ethernet_frame.set_dest_mac(dest_mac);
@@ -128,7 +124,7 @@ impl<'a> PacketBuilder<'a, RawState> {
         self.header_len = ETHERNET_MIN_HEADER_LENGTH;
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: EthernetHeaderState,
         })
@@ -153,11 +149,11 @@ impl<'a> PacketBuilder<'a, EthernetHeaderState> {
         dest_mac: &[u8; 6],
         dest_ip: &[u8; 4],
     ) -> Result<PacketBuilder<'a, ArpHeaderState>, &'static str> {
-        if self.data.len() < self.header_len {
+        if self.bytes.len() < self.header_len {
             return Err("Data too short to contain an ARP header.");
         }
 
-        let mut arp_packet = ArpBuilder::new(&mut self.data[self.header_len..])?;
+        let mut arp_packet = ArpWriter::new(&mut self.bytes[self.header_len..])?;
 
         arp_packet.set_htype(hardware_type);
         arp_packet.set_ptype(protocol_type);
@@ -169,10 +165,10 @@ impl<'a> PacketBuilder<'a, EthernetHeaderState> {
         arp_packet.set_tha(dest_mac);
         arp_packet.set_tpa(dest_ip);
 
-        self.header_len += arp_packet.header_length();
+        self.header_len += arp_packet.header_len();
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: ArpHeaderState,
         })
@@ -198,11 +194,11 @@ impl<'a> PacketBuilder<'a, EthernetHeaderState> {
         src_ip: &[u8; 4],
         dest_ip: &[u8; 4],
     ) -> Result<PacketBuilder<'a, Ipv4HeaderState>, &'static str> {
-        if self.data.len() < self.header_len {
+        if self.bytes.len() < self.header_len {
             return Err("Data too short to contain an IPv4 header.");
         }
 
-        let mut ipv4_packet = IPv4Builder::new(&mut self.data[self.header_len..])?;
+        let mut ipv4_packet = IPv4Writer::new(&mut self.bytes[self.header_len..])?;
 
         ipv4_packet.set_version(version);
         ipv4_packet.set_ihl(ihl);
@@ -218,10 +214,10 @@ impl<'a> PacketBuilder<'a, EthernetHeaderState> {
         ipv4_packet.set_dest_ip(dest_ip);
         ipv4_packet.set_checksum();
 
-        self.header_len += ipv4_packet.header_length();
+        self.header_len += ipv4_packet.header_len();
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: Ipv4HeaderState,
         })
@@ -248,11 +244,11 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         window_size: u16,
         urgent_pointer: u16,
     ) -> Result<PacketBuilder<'a, TcpHeaderState>, &'static str> {
-        if self.data.len() < self.header_len {
+        if self.bytes.len() < self.header_len {
             return Err("Data too short to contain a TCP segment.");
         }
 
-        let mut tcp_packet = TcpBuilder::new(&mut self.data[self.header_len..])?;
+        let mut tcp_packet = TcpWriter::new(&mut self.bytes[self.header_len..])?;
 
         tcp_packet.set_src_port(src_port);
         tcp_packet.set_dest_port(dest_port);
@@ -265,10 +261,10 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         tcp_packet.set_urgent_pointer(urgent_pointer);
         tcp_packet.set_checksum(src_ip, dest_ip);
 
-        self.header_len += tcp_packet.header_length();
+        self.header_len += tcp_packet.header_len();
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: TcpHeaderState,
         })
@@ -286,21 +282,21 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         dest_port: u16,
         length: u16,
     ) -> Result<PacketBuilder<'a, UdpHeaderState>, &'static str> {
-        if self.data.len() < self.header_len {
+        if self.bytes.len() < self.header_len {
             return Err("Data too short to contain a UDP datagram.");
         }
 
-        let mut udp_packet = UdpBuilder::new(&mut self.data[self.header_len..])?;
+        let mut udp_packet = UdpWriter::new(&mut self.bytes[self.header_len..])?;
 
         udp_packet.set_src_port(src_port);
         udp_packet.set_dest_port(dest_port);
         udp_packet.set_length(length);
         udp_packet.set_checksum(src_ip, dest_ip);
 
-        self.header_len += udp_packet.header_length();
+        self.header_len += udp_packet.header_len();
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: UdpHeaderState,
         })
@@ -315,20 +311,20 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         icmp_type: u8,
         icmp_code: u8,
     ) -> Result<PacketBuilder<'a, IcmpHeaderState>, &'static str> {
-        if self.data.len() < self.header_len {
+        if self.bytes.len() < self.header_len {
             return Err("Data too short to contain an ICMP packet.");
         }
 
-        let mut icmp_packet = IcmpBuilder::new(&mut self.data[self.header_len..])?;
+        let mut icmp_packet = IcmpWriter::new(&mut self.bytes[self.header_len..])?;
 
         icmp_packet.set_icmp_type(icmp_type);
         icmp_packet.set_icmp_code(icmp_code);
         icmp_packet.set_checksum();
 
-        self.header_len += icmp_packet.header_length();
+        self.header_len += icmp_packet.header_len();
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: IcmpHeaderState,
         })
@@ -353,16 +349,16 @@ impl<'a> PayloadWriter<'a> for PacketBuilder<'a, TcpHeaderState> {
         self,
         payload: &[u8],
     ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
-        if self.data.len() - self.header_len < payload.len() {
+        if self.bytes.len() - self.header_len < payload.len() {
             return Err("Data too short to contain the payload.");
         }
 
         let payload_start = self.header_len;
         let payload_end = payload_start + payload.len();
-        self.data[payload_start..payload_end].copy_from_slice(payload);
+        self.bytes[payload_start..payload_end].copy_from_slice(payload);
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: PayloadState,
         })
@@ -374,16 +370,16 @@ impl<'a> PayloadWriter<'a> for PacketBuilder<'a, UdpHeaderState> {
         self,
         payload: &[u8],
     ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
-        if self.data.len() - self.header_len < payload.len() {
+        if self.bytes.len() - self.header_len < payload.len() {
             return Err("Data too short to contain the payload.");
         }
 
         let payload_start = self.header_len;
         let payload_end = payload_start + payload.len();
-        self.data[payload_start..payload_end].copy_from_slice(payload);
+        self.bytes[payload_start..payload_end].copy_from_slice(payload);
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: PayloadState,
         })
@@ -395,16 +391,16 @@ impl<'a> PayloadWriter<'a> for PacketBuilder<'a, IcmpHeaderState> {
         self,
         payload: &[u8],
     ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
-        if self.data.len() - self.header_len < payload.len() {
+        if self.bytes.len() - self.header_len < payload.len() {
             return Err("Data too short to contain the payload.");
         }
 
         let payload_start = self.header_len;
         let payload_end = payload_start + payload.len();
-        self.data[payload_start..payload_end].copy_from_slice(payload);
+        self.bytes[payload_start..payload_end].copy_from_slice(payload);
 
         Ok(PacketBuilder {
-            data: self.data,
+            bytes: self.bytes,
             header_len: self.header_len,
             _state: PayloadState,
         })

@@ -90,9 +90,9 @@ if let Some(ipv4) = parsed.ipv4 {
     // ...
 }
 
-// Alternatively, just parse headers directly manually.
+// Alternatively, just manually read headers directly.
 // By adjusting the index of the slice you can find different headers.
-if let Some(tcp) = TcpParser::new(&packet)? {
+if let Some(tcp) = TcpReader::new(&packet)? {
     let src_port = tcp.src_port();
     // ...
 }
