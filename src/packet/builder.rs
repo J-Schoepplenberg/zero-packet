@@ -345,6 +345,7 @@ pub trait PayloadWriter<'a> {
 }
 
 impl<'a> PayloadWriter<'a> for PacketBuilder<'a, TcpHeaderState> {
+    #[inline]
     fn write_payload(
         self,
         payload: &[u8],
@@ -366,6 +367,7 @@ impl<'a> PayloadWriter<'a> for PacketBuilder<'a, TcpHeaderState> {
 }
 
 impl<'a> PayloadWriter<'a> for PacketBuilder<'a, UdpHeaderState> {
+    #[inline]
     fn write_payload(
         self,
         payload: &[u8],
@@ -387,6 +389,7 @@ impl<'a> PayloadWriter<'a> for PacketBuilder<'a, UdpHeaderState> {
 }
 
 impl<'a> PayloadWriter<'a> for PacketBuilder<'a, IcmpHeaderState> {
+    #[inline]
     fn write_payload(
         self,
         payload: &[u8],
