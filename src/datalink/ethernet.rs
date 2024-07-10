@@ -55,7 +55,7 @@ impl<'a> EthernetBuilder<'a> {
 
     /// Sets the EtherType field.
     ///
-    /// EtherType indicates which protcol is encapsulated in the payload.
+    /// EtherType indicates which protocol is encapsulated in the payload.
     #[inline]
     pub fn set_ethertype(&mut self, ethertype: u16) {
         self.data[12] = (ethertype >> 8) as u8;
@@ -94,7 +94,7 @@ impl<'a> EthernetParser<'a> {
 
     /// Returns a reference to the EtherType field.
     ///
-    /// EtherType indicates which protcol is encapsulated in the payload.
+    /// EtherType indicates which protocol is encapsulated in the payload.
     #[inline]
     pub fn ethertype(&self) -> u16 {
         ((self.data[12] as u16) << 8) | (self.data[13] as u16)
