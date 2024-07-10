@@ -80,21 +80,15 @@ impl<'a> EthernetParser<'a> {
         Ok(Self { data })
     }
 
-    /// Returns the header length in bytes.
-    #[inline]
-    pub fn header_length(&self) -> usize {
-        ETHERNET_MIN_HEADER_LENGTH
-    }
-
     /// Returns a reference to the destination MAC address.
     #[inline]
-    pub fn get_dest_mac(&self) -> &[u8] {
+    pub fn dest_mac(&self) -> &[u8] {
         &self.data[0..6]
     }
 
-    /// Returns a reference to the source MAC address..
+    /// Returns a reference to the source MAC address.
     #[inline]
-    pub fn get_src_mac(&self) -> &[u8] {
+    pub fn src_mac(&self) -> &[u8] {
         &self.data[6..12]
     }
 
@@ -102,8 +96,20 @@ impl<'a> EthernetParser<'a> {
     ///
     /// EtherType indicates which protcol is encapsulated in the payload.
     #[inline]
-    pub fn get_ethertype(&self) -> u16 {
+    pub fn ethertype(&self) -> u16 {
         ((self.data[12] as u16) << 8) | (self.data[13] as u16)
+    }
+
+    /// Returns the header length in bytes.
+    #[inline]
+    pub const fn header_len(&self) -> usize {
+        ETHERNET_MIN_HEADER_LENGTH
+    }
+
+    /// Returns a reference to the header.
+    #[inline]
+    pub fn header(&self) -> &'a [u8] {
+        &self.data[..ETHERNET_MIN_HEADER_LENGTH]
     }
 
     /// Returns a reference to the payload.
@@ -116,15 +122,15 @@ impl<'a> EthernetParser<'a> {
 impl<'a> fmt::Debug for EthernetParser<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d_buf = [0u8; 18];
-        let d_len = to_hex_string(self.get_dest_mac(), &mut d_buf);
+        let d_len = to_hex_string(self.dest_mac(), &mut d_buf);
         let d_hex = from_utf8(&d_buf[..d_len]).unwrap();
         let mut s_buf = [0u8; 18];
-        let s_len = to_hex_string(self.get_src_mac(), &mut s_buf);
+        let s_len = to_hex_string(self.src_mac(), &mut s_buf);
         let s_hex = from_utf8(&s_buf[..s_len]).unwrap();
         f.debug_struct("EthernetFrame")
             .field("dest_mac", &d_hex)
             .field("src_mac", &s_hex)
-            .field("ethertype", &self.get_ethertype())
+            .field("ethertype", &self.ethertype())
             .finish()
     }
 }
@@ -155,8 +161,8 @@ mod tests {
         let parser = EthernetParser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(parser.get_src_mac(), src);
-        assert_eq!(parser.get_dest_mac(), dest);
-        assert_eq!(parser.get_ethertype(), ethertype);
+        assert_eq!(parser.src_mac(), src);
+        assert_eq!(parser.dest_mac(), dest);
+        assert_eq!(parser.ethertype(), ethertype);
     }
 }

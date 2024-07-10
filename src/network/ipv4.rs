@@ -61,7 +61,7 @@ impl<'a> IPv4Builder<'a> {
 
     /// Sets the identification field.
     #[inline]
-    pub fn set_identification(&mut self, identification: u16) {
+    pub fn set_id(&mut self, identification: u16) {
         self.data[4] = (identification >> 8) as u8;
         self.data[5] = (identification & 0xFF) as u8;
     }
@@ -139,121 +139,121 @@ impl<'a> IPv4Parser<'a> {
         Ok(Self { data })
     }
 
-    /// Returns the actual header length in bytes.
-    #[inline]
-    pub fn header_length(&self) -> usize {
-        self.get_ihl() as usize * 4
-    }
-
     /// Returns the version field.
     #[inline]
-    pub fn get_version(&self) -> u8 {
+    pub fn version(&self) -> u8 {
         self.data[0] >> 4
     }
 
     /// Returns the IHL field.
     #[inline]
-    pub fn get_ihl(&self) -> u8 {
+    pub fn ihl(&self) -> u8 {
         self.data[0] & 0x0f
     }
 
     /// Returns the DSCP field.
     #[inline]
-    pub fn get_dscp(&self) -> u8 {
+    pub fn dscp(&self) -> u8 {
         self.data[1] >> 2
     }
 
     /// Returns the ECN field.
     #[inline]
-    pub fn get_ecn(&self) -> u8 {
+    pub fn ecn(&self) -> u8 {
         self.data[1] & 0x03
     }
 
     /// Returns the total length field.
     #[inline]
-    pub fn get_total_length(&self) -> u16 {
+    pub fn total_length(&self) -> u16 {
         ((self.data[2] as u16) << 8) | (self.data[3] as u16)
     }
 
     /// Returns the identification field.
     #[inline]
-    pub fn get_identification(&self) -> u16 {
+    pub fn id(&self) -> u16 {
         ((self.data[4] as u16) << 8) | (self.data[5] as u16)
     }
 
     /// Returns the flags field.
     #[inline]
-    pub fn get_flags(&self) -> u8 {
+    pub fn flags(&self) -> u8 {
         self.data[6] >> 5
     }
 
     /// Returns the fragment offset field.
     #[inline]
-    pub fn get_fragment_offset(&self) -> u16 {
+    pub fn fragment_offset(&self) -> u16 {
         ((self.data[6] as u16 & 0x1F) << 8) | (self.data[7] as u16)
     }
 
     /// Returns the TTL field.
     #[inline]
-    pub fn get_ttl(&self) -> u8 {
+    pub fn ttl(&self) -> u8 {
         self.data[8]
     }
 
     /// Returns the protocol field.
     #[inline]
-    pub fn get_protocol(&self) -> u8 {
+    pub fn protocol(&self) -> u8 {
         self.data[9]
     }
 
     /// Returns a reference to the source IP address field.
     #[inline]
-    pub fn get_src_ip(&self) -> &[u8] {
+    pub fn src_ip(&self) -> &[u8] {
         &self.data[12..16]
     }
 
     /// Returns a reference to the destination IP address field.
     #[inline]
-    pub fn get_dest_ip(&self) -> &[u8] {
+    pub fn dest_ip(&self) -> &[u8] {
         &self.data[16..20]
     }
 
     /// Returns the checksum field.
     #[inline]
-    pub fn get_checksum(&self) -> u16 {
+    pub fn checksum(&self) -> u16 {
         ((self.data[10] as u16) << 8) | (self.data[11] as u16)
+    }
+
+    /// Returns the actual header length in bytes.
+    #[inline]
+    pub fn header_len(&self) -> usize {
+        self.ihl() as usize * 4
     }
 
     /// Returns a reference to the header.
     #[inline]
-    pub fn get_header(&self) -> &'a [u8] {
-        &self.data[..self.header_length()]
+    pub fn header(&self) -> &'a [u8] {
+        &self.data[..self.header_len()]
     }
 
     /// Returns a reference to the payload.
     #[inline]
-    pub fn get_payload(&self) -> &'a [u8] {
-        &self.data[self.header_length()..]
+    pub fn payload(&self) -> &'a [u8] {
+        &self.data[self.header_len()..]
     }
 }
 
 impl<'a> fmt::Debug for IPv4Parser<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let src_ip = self.get_src_ip();
-        let dest_ip = self.get_dest_ip();
+        let src_ip = self.src_ip();
+        let dest_ip = self.dest_ip();
         f.debug_struct("IPv4Packet")
-            .field("version", &self.get_version())
-            .field("ihl", &self.get_ihl())
-            .field("dscp", &self.get_dscp())
-            .field("ecn", &self.get_ecn())
-            .field("total_length", &self.get_total_length())
-            .field("identification", &self.get_identification())
-            .field("flags", &self.get_flags())
-            .field("fragment_offset", &self.get_fragment_offset())
-            .field("ttl", &self.get_ttl())
-            .field("protocol", &self.get_protocol())
-            .field("checksum", &self.get_checksum())
-            .field("src_ip", &IpFormatter(&src_ip))
-            .field("dest_ip", &IpFormatter(&dest_ip))
+            .field("version", &self.version())
+            .field("ihl", &self.ihl())
+            .field("dscp", &self.dscp())
+            .field("ecn", &self.ecn())
+            .field("total_length", &self.total_length())
+            .field("identification", &self.id())
+            .field("flags", &self.flags())
+            .field("fragment_offset", &self.fragment_offset())
+            .field("ttl", &self.ttl())
+            .field("protocol", &self.protocol())
+            .field("checksum", &self.checksum())
+            .field("src_ip", &IpFormatter(src_ip))
+            .field("dest_ip", &IpFormatter(dest_ip))
             .finish()
     }
 }
@@ -290,7 +290,7 @@ mod tests {
         builder.set_dscp(dscp);
         builder.set_ecn(ecn);
         builder.set_total_length(total_length);
-        builder.set_identification(identification);
+        builder.set_id(identification);
         builder.set_flags(flags);
         builder.set_fragment_offset(fragment_offset);
         builder.set_ttl(ttl);
@@ -302,17 +302,17 @@ mod tests {
         let parser = IPv4Parser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(parser.get_version(), version);
-        assert_eq!(parser.get_ihl(), ihl);
-        assert_eq!(parser.get_dscp(), dscp);
-        assert_eq!(parser.get_ecn(), ecn);
-        assert_eq!(parser.get_total_length(), total_length);
-        assert_eq!(parser.get_identification(), identification);
-        assert_eq!(parser.get_flags(), flags);
-        assert_eq!(parser.get_fragment_offset(), fragment_offset);
-        assert_eq!(parser.get_ttl(), ttl);
-        assert_eq!(parser.get_protocol(), protocol);
-        assert_eq!(parser.get_src_ip(), src_ip);
-        assert_eq!(parser.get_dest_ip(), dest_ip);
+        assert_eq!(parser.version(), version);
+        assert_eq!(parser.ihl(), ihl);
+        assert_eq!(parser.dscp(), dscp);
+        assert_eq!(parser.ecn(), ecn);
+        assert_eq!(parser.total_length(), total_length);
+        assert_eq!(parser.id(), identification);
+        assert_eq!(parser.flags(), flags);
+        assert_eq!(parser.fragment_offset(), fragment_offset);
+        assert_eq!(parser.ttl(), ttl);
+        assert_eq!(parser.protocol(), protocol);
+        assert_eq!(parser.src_ip(), src_ip);
+        assert_eq!(parser.dest_ip(), dest_ip);
     }
 }

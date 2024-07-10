@@ -80,43 +80,49 @@ impl<'a> UdpParser<'a> {
         Ok(Self { data })
     }
 
-    /// Returns the header length in bytes.
-    #[inline]
-    pub fn header_length(&self) -> usize {
-        UDP_HEADER_LENGTH
-    }
-
-    /// Returns the payload.
-    #[inline]
-    pub fn get_payload(&self) -> &[u8] {
-        &self.data[UDP_HEADER_LENGTH..]
-    }
-
     /// Returns the source port field.
     #[inline]
-    pub fn get_src_port(&self) -> u16 {
+    pub fn src_port(&self) -> u16 {
         ((self.data[0] as u16) << 8) | (self.data[1] as u16)
     }
 
     /// Returns the destination port field.
     #[inline]
-    pub fn get_dest_port(&self) -> u16 {
+    pub fn dest_port(&self) -> u16 {
         ((self.data[2] as u16) << 8) | (self.data[3] as u16)
     }
 
     /// Returns the length field.
     #[inline]
-    pub fn get_length(&self) -> u16 {
+    pub fn length(&self) -> u16 {
         ((self.data[4] as u16) << 8) | (self.data[5] as u16)
+    }
+
+    /// Returns the header length in bytes.
+    #[inline]
+    pub fn header_len(&self) -> usize {
+        UDP_HEADER_LENGTH
+    }
+
+    /// Returns a reference to the header.
+    #[inline]
+    pub fn header(&self) -> &'a [u8] {
+        &self.data[..UDP_HEADER_LENGTH]
+    }
+
+    /// Returns a reference to the payload.
+    #[inline]
+    pub fn payload(&self) -> &'a [u8] {
+        &self.data[UDP_HEADER_LENGTH..]
     }
 }
 
 impl fmt::Debug for UdpParser<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UdpDatagram")
-            .field("src_port", &self.get_src_port())
-            .field("dest_port", &self.get_dest_port())
-            .field("length", &self.get_length())
+            .field("src_port", &self.src_port())
+            .field("dest_port", &self.dest_port())
+            .field("length", &self.length())
             .finish()
     }
 }
@@ -150,8 +156,8 @@ mod tests {
         let parser = UdpParser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(parser.get_src_port(), src_port);
-        assert_eq!(parser.get_dest_port(), dst_port);
-        assert_eq!(parser.get_length(), length);
+        assert_eq!(parser.src_port(), src_port);
+        assert_eq!(parser.dest_port(), dst_port);
+        assert_eq!(parser.length(), length);
     }
 }

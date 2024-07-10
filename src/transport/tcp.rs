@@ -51,7 +51,7 @@ impl<'a> TcpBuilder<'a> {
 
     /// Sets the acknowledgment number field.
     #[inline]
-    pub fn set_acknowledgment_number(&mut self, acknowledgment_number: u32) {
+    pub fn set_ack_number(&mut self, acknowledgment_number: u32) {
         self.data[8] = (acknowledgment_number >> 24) as u8;
         self.data[9] = (acknowledgment_number >> 16) as u8;
         self.data[10] = (acknowledgment_number >> 8) as u8;
@@ -121,27 +121,21 @@ impl<'a> TcpParser<'a> {
         Ok(Self { data })
     }
 
-    /// Returns the header length in bytes by multiplying the data offset.
-    #[inline]
-    pub fn header_length(&self) -> usize {
-        self.get_data_offset() as usize * 4
-    }
-
     /// Returns the source port field.
     #[inline]
-    pub fn get_src_port(&self) -> u16 {
+    pub fn src_port(&self) -> u16 {
         ((self.data[0] as u16) << 8) | (self.data[1] as u16)
     }
 
     /// Returns the destination port field.
     #[inline]
-    pub fn get_dest_port(&self) -> u16 {
+    pub fn dest_port(&self) -> u16 {
         ((self.data[2] as u16) << 8) | (self.data[3] as u16)
     }
 
     /// Returns the sequence number field.
     #[inline]
-    pub fn get_sequence_number(&self) -> u32 {
+    pub fn sequence_number(&self) -> u32 {
         ((self.data[4] as u32) << 24)
             | ((self.data[5] as u32) << 16)
             | ((self.data[6] as u32) << 8)
@@ -150,7 +144,7 @@ impl<'a> TcpParser<'a> {
 
     /// Returns the acknowledgment number field.
     #[inline]
-    pub fn get_acknowledgment_number(&self) -> u32 {
+    pub fn ack_number(&self) -> u32 {
         ((self.data[8] as u32) << 24)
             | ((self.data[9] as u32) << 16)
             | ((self.data[10] as u32) << 8)
@@ -159,54 +153,72 @@ impl<'a> TcpParser<'a> {
 
     /// Returns the data offset field.
     #[inline]
-    pub fn get_data_offset(&self) -> u8 {
+    pub fn data_offset(&self) -> u8 {
         self.data[12] >> 4
     }
 
     /// Returns the reserved field.
     #[inline]
-    pub fn get_reserved(&self) -> u8 {
+    pub fn reserved(&self) -> u8 {
         self.data[12] & 0x0F
     }
 
     /// Returns the flags field.
     #[inline]
-    pub fn get_flags(&self) -> u8 {
+    pub fn flags(&self) -> u8 {
         self.data[13]
     }
 
     /// Returns the window size field.
     #[inline]
-    pub fn get_window_size(&self) -> u16 {
+    pub fn window_size(&self) -> u16 {
         ((self.data[14] as u16) << 8) | (self.data[15] as u16)
     }
 
     /// Returns the checksum field.
     #[inline]
-    pub fn get_checksum(&self) -> u16 {
+    pub fn checksum(&self) -> u16 {
         ((self.data[16] as u16) << 8) | (self.data[17] as u16)
     }
 
     /// Returns the urgent pointer field.
     #[inline]
-    pub fn get_urgent_pointer(&self) -> u16 {
+    pub fn urgent_pointer(&self) -> u16 {
         ((self.data[18] as u16) << 8) | (self.data[19] as u16)
+    }
+
+    /// Returns the header length in bytes by multiplying the data offset.
+    #[inline]
+    pub fn header_len(&self) -> usize {
+        self.data_offset() as usize * 4
+    }
+
+    /// Returns a reference to the header.
+    #[inline]
+    pub fn header(&self) -> &'a [u8] {
+        &self.data[..self.header_len()]
+    }
+
+    /// Returns a reference to the payload.
+    #[inline]
+    pub fn payload(&self) -> &'a [u8] {
+        &self.data[self.header_len()..]
     }
 }
 
 impl<'a> fmt::Debug for TcpParser<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("TcpSegment")
-            .field("src_port", &self.get_src_port())
-            .field("dest_port", &self.get_dest_port())
-            .field("sequence_number", &self.get_sequence_number())
-            .field("acknowledgment_number", &self.get_acknowledgment_number())
-            .field("data_offset", &self.get_data_offset())
-            .field("reserved", &self.get_reserved())
-            .field("flags", &self.get_flags())
-            .field("window_size", &self.get_window_size())
-            .field("checksum", &self.get_checksum())
-            .field("urgent_pointer", &self.get_urgent_pointer())
+            .field("src_port", &self.src_port())
+            .field("dest_port", &self.dest_port())
+            .field("sequence_number", &self.sequence_number())
+            .field("acknowledgment_number", &self.ack_number())
+            .field("data_offset", &self.data_offset())
+            .field("reserved", &self.reserved())
+            .field("flags", &self.flags())
+            .field("window_size", &self.window_size())
+            .field("checksum", &self.checksum())
+            .field("urgent_pointer", &self.urgent_pointer())
             .finish()
     }
 }
@@ -238,7 +250,7 @@ mod tests {
         builder.set_src_port(src_port);
         builder.set_dest_port(dest_port);
         builder.set_sequence_number(sequence_number);
-        builder.set_acknowledgment_number(acknowledgment_number);
+        builder.set_ack_number(acknowledgment_number);
         builder.set_reserved(reserved);
         builder.set_data_offset(data_offset);
         builder.set_flags(flags);
@@ -250,14 +262,14 @@ mod tests {
         let parser = TcpParser::new(&data).unwrap();
 
         // Ensure the fields are set and retrieved correctly.
-        assert_eq!(parser.get_src_port(), src_port);
-        assert_eq!(parser.get_dest_port(), dest_port);
-        assert_eq!(parser.get_sequence_number(), sequence_number);
-        assert_eq!(parser.get_acknowledgment_number(), acknowledgment_number);
-        assert_eq!(parser.get_reserved(), reserved);
-        assert_eq!(parser.get_data_offset(), data_offset);
-        assert_eq!(parser.get_flags(), flags);
-        assert_eq!(parser.get_window_size(), window_size);
-        assert_eq!(parser.get_urgent_pointer(), urgent_pointer);
+        assert_eq!(parser.src_port(), src_port);
+        assert_eq!(parser.dest_port(), dest_port);
+        assert_eq!(parser.sequence_number(), sequence_number);
+        assert_eq!(parser.ack_number(), acknowledgment_number);
+        assert_eq!(parser.reserved(), reserved);
+        assert_eq!(parser.data_offset(), data_offset);
+        assert_eq!(parser.flags(), flags);
+        assert_eq!(parser.window_size(), window_size);
+        assert_eq!(parser.urgent_pointer(), urgent_pointer);
     }
 }

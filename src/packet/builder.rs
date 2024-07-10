@@ -7,73 +7,118 @@ use crate::{
     transport::{tcp::TcpBuilder, udp::UdpBuilder},
 };
 
+// PacketBuilder State Machine:
+//
+//   Raw
+//    |
+//    v
+// EthernetHeader
+//    |       \
+//    |        v
+//    |     ArpHeader
+//    |
+//    v
+// Ipv4Header
+//    |     \         \           \
+//    |      v         v           v
+//    |   TcpHeader  UdpHeader  IcmpHeader
+//    |      |         |           |
+//    |      v         v           v
+//    +----> Payload <------------+
+
+/// Zero-sized struct representing the `Raw` state of the `PacketBuilder` state machine.
+pub struct RawState;
+
+/// Zero-sized struct representing the `EthernetHeader` state of the `PacketBuilder` state machine.
+pub struct EthernetHeaderState;
+
+/// Zero-sized struct representing the `ArpHeader` state of the `PacketBuilder` state machine.
+pub struct ArpHeaderState;
+
+/// Zero-sized struct representing the `Ipv4Header` state of the `PacketBuilder` state machine.
+pub struct Ipv4HeaderState;
+
+/// Zero-sized struct representing the `TcpHeader` state of the `PacketBuilder` state machine.
+pub struct TcpHeaderState;
+
+/// Zero-sized struct representing the `UdpHeader` state of the `PacketBuilder` state machine.
+pub struct UdpHeaderState;
+
+/// Zero-sized struct representing the `IcmpHeader` state of the `PacketBuilder` state machine.
+pub struct IcmpHeaderState;
+
+/// Zero-sized struct representing the `Payload` state of the `PacketBuilder` state machine.
+pub struct PayloadState;
+
 /// A zero-copy packet builder.
-pub struct PacketBuilder<'a> {
-    pub data: &'a mut [u8],
+///
+/// Using the typestate pattern, a state machine is implemented using the type system.
+/// The state machine ensures that the package is built correctly.
+///
+/// The creation of new `PacketBuilder` instances happens on the stack.
+/// These stack allocations are very cheap and most likely optimized away by the compiler.
+/// The state types are zero-sized types (ZSTs) and don't consume any memory.
+pub struct PacketBuilder<'a, State> {
+    data: &'a mut [u8],
     header_len: usize,
+    _state: State,
 }
 
-impl<'a> PacketBuilder<'a> {
-    // Ignore clippy lint for too many arguments.
-    #![allow(clippy::too_many_arguments)]
-
-    /// Creates a new `PacketBuilder` from the given data slice.
-    #[inline]
-    pub fn new(data: &'a mut [u8]) -> PacketBuilder<'a> {
-        PacketBuilder {
-            data,
-            header_len: 0,
-        }
-    }
-
-    #[inline]
+impl<'a, State> PacketBuilder<'a, State> {
     /// Returns the length of all encapsulated headers in bytes.
-    pub fn total_header_length(&self) -> usize {
+    #[inline]
+    pub fn header_len(&self) -> usize {
         self.header_len
     }
 
     /// Returns the length of the payload in bytes.
     ///
+    /// The payload is the data after all headers.
+    ///
     /// Should be called after all headers have been set.
     #[inline]
-    pub fn payload_length(&self) -> usize {
+    pub fn payload_len(&self) -> usize {
         self.data.len() - self.header_len
     }
 
     /// Returns the payload.
     ///
+    /// The payload is the data after all headers.
+    ///
     /// Should be called after all headers have been set.
     #[inline]
-    pub fn get_payload(&self) -> &[u8] {
+    pub fn payload(&self) -> &[u8] {
         &self.data[self.header_len..]
     }
 
-    /// Sets the payload.
-    ///
-    /// Should be called after all headers have been set.
-    ///
-    /// Fails if the payload is too large to fit in the remaining data slice.
+    /// Returns a reference to the data slice.
     #[inline]
-    pub fn payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
-        if self.data.len() - self.header_len < payload.len() {
-            return Err("Data too short to contain the payload.");
+    pub fn build(self) -> &'a [u8] {
+        self.data
+    }
+}
+
+impl<'a> PacketBuilder<'a, RawState> {
+    /// Creates a new `PacketBuilder` from the given data slice.
+    #[inline]
+    pub fn new(data: &'a mut [u8]) -> PacketBuilder<'a, RawState> {
+        PacketBuilder {
+            data,
+            header_len: 0,
+            _state: RawState,
         }
-
-        self.data[self.header_len..self.header_len + payload.len()].copy_from_slice(payload);
-
-        Ok(())
     }
 
-    /// Sets Ethernet header fields.
+    /// Sets Ethernet II header fields.
     ///
-    /// Should be the first header in the packet.
+    /// Transition: Raw -> EthernetHeader.
     #[inline]
     pub fn ethernet(
-        &mut self,
+        mut self,
         src_mac: &[u8; 6],
         dest_mac: &[u8; 6],
         ethertype: u16,
-    ) -> Result<&mut Self, &'static str> {
+    ) -> Result<PacketBuilder<'a, EthernetHeaderState>, &'static str> {
         let mut ethernet_frame = EthernetBuilder::new(self.data)?;
 
         ethernet_frame.set_src_mac(src_mac);
@@ -82,16 +127,22 @@ impl<'a> PacketBuilder<'a> {
 
         self.header_len = ETHERNET_MIN_HEADER_LENGTH;
 
-        Ok(self)
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: EthernetHeaderState,
+        })
     }
+}
 
+impl<'a> PacketBuilder<'a, EthernetHeaderState> {
     /// Sets ARP header fields.
     ///
-    /// Should be encapsulated in an Ethernet frame.
-    /// Therefore, should be called after `ethernet`.
+    /// Transition: EthernetHeader -> ArpHeader.
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn arp(
-        &mut self,
+        mut self,
         hardware_type: u16,
         protocol_type: u16,
         hardware_address_length: u8,
@@ -101,7 +152,7 @@ impl<'a> PacketBuilder<'a> {
         src_ip: &[u8; 4],
         dest_mac: &[u8; 6],
         dest_ip: &[u8; 4],
-    ) -> Result<&mut Self, &'static str> {
+    ) -> Result<PacketBuilder<'a, ArpHeaderState>, &'static str> {
         if self.data.len() < self.header_len {
             return Err("Data too short to contain an ARP header.");
         }
@@ -120,16 +171,20 @@ impl<'a> PacketBuilder<'a> {
 
         self.header_len += arp_packet.header_length();
 
-        Ok(self)
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: ArpHeaderState,
+        })
     }
 
     /// Sets IPv4 header fields.
     ///
-    /// Should be encapsulated in an Ethernet frame.
-    /// Therefore, should be called after `ethernet`.
+    /// Transition: EthernetHeader -> Ipv4Header.
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn ipv4(
-        &mut self,
+        mut self,
         version: u8,
         ihl: u8,
         dscp: u8,
@@ -142,7 +197,7 @@ impl<'a> PacketBuilder<'a> {
         protocol: u8,
         src_ip: &[u8; 4],
         dest_ip: &[u8; 4],
-    ) -> Result<&mut Self, &'static str> {
+    ) -> Result<PacketBuilder<'a, Ipv4HeaderState>, &'static str> {
         if self.data.len() < self.header_len {
             return Err("Data too short to contain an IPv4 header.");
         }
@@ -154,7 +209,7 @@ impl<'a> PacketBuilder<'a> {
         ipv4_packet.set_dscp(dscp);
         ipv4_packet.set_ecn(ecn);
         ipv4_packet.set_total_length(total_length);
-        ipv4_packet.set_identification(identification);
+        ipv4_packet.set_id(identification);
         ipv4_packet.set_flags(flags);
         ipv4_packet.set_fragment_offset(fragment_offset);
         ipv4_packet.set_ttl(ttl);
@@ -165,16 +220,22 @@ impl<'a> PacketBuilder<'a> {
 
         self.header_len += ipv4_packet.header_length();
 
-        Ok(self)
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: Ipv4HeaderState,
+        })
     }
+}
 
+impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
     /// Sets TCP header fields.
     ///
-    /// Should be encapsulated in an IPv4 or IPv6 packet.
-    /// Therefore, should be called after `ipv4` or `ipv6`.
+    /// Transition: Ipv4Header -> TcpHeader.
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn tcp(
-        &mut self,
+        mut self,
         src_ip: &[u8; 4],
         src_port: u16,
         dest_ip: &[u8; 4],
@@ -186,7 +247,7 @@ impl<'a> PacketBuilder<'a> {
         flags: u8,
         window_size: u16,
         urgent_pointer: u16,
-    ) -> Result<&mut Self, &'static str> {
+    ) -> Result<PacketBuilder<'a, TcpHeaderState>, &'static str> {
         if self.data.len() < self.header_len {
             return Err("Data too short to contain a TCP segment.");
         }
@@ -196,7 +257,7 @@ impl<'a> PacketBuilder<'a> {
         tcp_packet.set_src_port(src_port);
         tcp_packet.set_dest_port(dest_port);
         tcp_packet.set_sequence_number(sequence_number);
-        tcp_packet.set_acknowledgment_number(acknowledgment_number);
+        tcp_packet.set_ack_number(acknowledgment_number);
         tcp_packet.set_reserved(reserved);
         tcp_packet.set_data_offset(data_offset);
         tcp_packet.set_flags(flags);
@@ -206,22 +267,25 @@ impl<'a> PacketBuilder<'a> {
 
         self.header_len += tcp_packet.header_length();
 
-        Ok(self)
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: TcpHeaderState,
+        })
     }
 
     /// Sets UDP header fields.
     ///
-    /// Should be encapsulated in an IPv4 or IPv6 packet.
-    /// Therefore, should be called after `ipv4` or `ipv6`.
+    /// Transition: Ipv4Header -> UdpHeader.
     #[inline]
     pub fn udp(
-        &mut self,
+        mut self,
         src_ip: &[u8; 4],
         src_port: u16,
         dest_ip: &[u8; 4],
         dest_port: u16,
         length: u16,
-    ) -> Result<&mut Self, &'static str> {
+    ) -> Result<PacketBuilder<'a, UdpHeaderState>, &'static str> {
         if self.data.len() < self.header_len {
             return Err("Data too short to contain a UDP datagram.");
         }
@@ -235,34 +299,232 @@ impl<'a> PacketBuilder<'a> {
 
         self.header_len += udp_packet.header_length();
 
-        Ok(self)
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: UdpHeaderState,
+        })
     }
 
     /// Sets ICMP header fields.
     ///
-    /// Should be encapsulated in an IPv4 or IPv6 packet.
-    /// Therefore, should be called after `ipv4` or `ipv6`.
+    /// Transition: Ipv4Header -> IcmpHeader.
     #[inline]
-    pub fn icmp(&mut self, icmp_type: u8, icmp_code: u8) -> Result<&mut Self, &'static str> {
+    pub fn icmp(
+        mut self,
+        icmp_type: u8,
+        icmp_code: u8,
+    ) -> Result<PacketBuilder<'a, IcmpHeaderState>, &'static str> {
         if self.data.len() < self.header_len {
             return Err("Data too short to contain an ICMP packet.");
         }
 
         let mut icmp_packet = IcmpBuilder::new(&mut self.data[self.header_len..])?;
 
-        icmp_packet.set_type(icmp_type);
-        icmp_packet.set_code(icmp_code);
+        icmp_packet.set_icmp_type(icmp_type);
+        icmp_packet.set_icmp_code(icmp_code);
         icmp_packet.set_checksum();
 
         self.header_len += icmp_packet.header_length();
 
-        Ok(self)
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: IcmpHeaderState,
+        })
+    }
+}
+
+/// Interface for writing the payload for a packet.
+///
+/// Implemented for `PacketBuilder` in the `TcpHeader`, `UdpHeader`, and `IcmpHeader` states.
+pub trait PayloadWriter<'a> {
+    /// Writes a given payload to the packet and transitions into the `Payload` state.
+    ///
+    /// `PacketBuilder::payload_len()` may be different than the written payload.
+    ///
+    /// That is, because the data slice, which we mutate in-place, can be longer than the payload.
+    fn write_payload(self, payload: &[u8])
+        -> Result<PacketBuilder<'a, PayloadState>, &'static str>;
+}
+
+impl<'a> PayloadWriter<'a> for PacketBuilder<'a, TcpHeaderState> {
+    fn write_payload(
+        self,
+        payload: &[u8],
+    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
+        if self.data.len() - self.header_len < payload.len() {
+            return Err("Data too short to contain the payload.");
+        }
+
+        let payload_start = self.header_len;
+        let payload_end = payload_start + payload.len();
+        self.data[payload_start..payload_end].copy_from_slice(payload);
+
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: PayloadState,
+        })
+    }
+}
+
+impl<'a> PayloadWriter<'a> for PacketBuilder<'a, UdpHeaderState> {
+    fn write_payload(
+        self,
+        payload: &[u8],
+    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
+        if self.data.len() - self.header_len < payload.len() {
+            return Err("Data too short to contain the payload.");
+        }
+
+        let payload_start = self.header_len;
+        let payload_end = payload_start + payload.len();
+        self.data[payload_start..payload_end].copy_from_slice(payload);
+
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: PayloadState,
+        })
+    }
+}
+
+impl<'a> PayloadWriter<'a> for PacketBuilder<'a, IcmpHeaderState> {
+    fn write_payload(
+        self,
+        payload: &[u8],
+    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
+        if self.data.len() - self.header_len < payload.len() {
+            return Err("Data too short to contain the payload.");
+        }
+
+        let payload_start = self.header_len;
+        let payload_end = payload_start + payload.len();
+        self.data[payload_start..payload_end].copy_from_slice(payload);
+
+        Ok(PacketBuilder {
+            data: self.data,
+            header_len: self.header_len,
+            _state: PayloadState,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        datalink::arp::ARP_HEADER_LENGTH, network::ipv4::IPV4_MIN_HEADER_LENGTH,
+        transport::udp::UDP_HEADER_LENGTH,
+    };
+
+    #[test]
+    fn test_write_payload() {
+        // Raw packet data.
+        let mut buffer = [0u8; 64];
+
+        // Construct PacketBuilder with an Ethernet header, an IPv4 header, a UDP header, and a payload.
+        let packet_builder = PacketBuilder::new(&mut buffer)
+            .ethernet(&[1, 2, 3, 4, 5, 6], &[7, 8, 9, 10, 11, 12], 0x0800)
+            .unwrap()
+            .ipv4(
+                4,
+                5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                64,
+                1,
+                &[192, 168, 1, 1],
+                &[192, 168, 1, 2],
+            )
+            .unwrap()
+            .udp(&[192, 168, 1, 1], 12345, &[192, 168, 1, 2], 54321, 0)
+            .unwrap()
+            .write_payload(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+            .unwrap();
+
+        // Ensure the header length is correct.
+        assert_eq!(
+            packet_builder.header_len(),
+            ETHERNET_MIN_HEADER_LENGTH + IPV4_MIN_HEADER_LENGTH + UDP_HEADER_LENGTH
+        );
+
+        // Since the buffer slice is bigger than the header length + written payload length,
+        // the data that follows all headers is not the same as the written payload.
+        assert_ne!(
+            packet_builder.payload_len(),
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].len()
+        );
+
+        // Build the packet.
+        let packet = packet_builder.build();
+
+        // Expected output given the chosen values.
+        let should_be = [
+            7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 8, 0, 69, 0, 0, 0, 0, 0, 0, 0, 64, 1, 247, 169,
+            192, 168, 1, 1, 192, 168, 1, 2, 48, 57, 212, 49, 0, 0, 120, 17, 1, 2, 3, 4, 5, 6, 7, 8,
+            9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+
+        // Output should match the exepectation.
+        assert_eq!(packet, should_be);
+    }
+
+    #[test]
+    fn test_misc() {
+        // Raw packet data.
+        let mut packet = [0u8; 64];
+
+        // Measure the number of allocations.
+        let allocations = allocation_counter::measure(|| {
+            // Packet builder in the initial state.
+            let packet_builder = PacketBuilder::new(&mut packet);
+
+            // Transition to the Ethernet header state.
+            let eth_builder = packet_builder
+                .ethernet(
+                    &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                    &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+                    2054,
+                )
+                .unwrap();
+
+            // Ensure the header length is correct.
+            assert_eq!(eth_builder.header_len(), ETHERNET_MIN_HEADER_LENGTH);
+
+            // Transition to the ARP header state.
+            let arp_builder = eth_builder
+                .arp(
+                    1,
+                    2048,
+                    6,
+                    4,
+                    1,
+                    &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                    &[192, 168, 1, 1],
+                    &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                    &[192, 168, 1, 2],
+                )
+                .unwrap();
+
+            // Ensure the header length is correct.
+            assert_eq!(
+                arp_builder.header_len(),
+                ETHERNET_MIN_HEADER_LENGTH + ARP_HEADER_LENGTH
+            );
+
+            // Ensure 64 (Raw) - 14 (Ethernet) - 28 (Arp) = 22.
+            assert_eq!(arp_builder.payload_len(), 22);
+        });
+
+        // Ensure zero allocations.
+        assert_eq!(allocations.count_total, 0);
+    }
 
     #[test]
     fn test_arp_in_ethernet() {
@@ -278,7 +540,7 @@ mod tests {
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
             // Packet builder.
-            let mut packet_builder = PacketBuilder::new(&mut packet);
+            let packet_builder = PacketBuilder::new(&mut packet);
 
             // Build the packet.
             packet_builder
@@ -324,7 +586,7 @@ mod tests {
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
             // Packet builder.
-            let mut packet_builder = PacketBuilder::new(&mut packet);
+            let packet_builder = PacketBuilder::new(&mut packet);
 
             // Build the packet.
             packet_builder
@@ -387,7 +649,7 @@ mod tests {
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
             // Packet builder.
-            let mut packet_builder = PacketBuilder::new(&mut packet);
+            let packet_builder = PacketBuilder::new(&mut packet);
 
             // Build the packet.
             packet_builder
@@ -438,7 +700,7 @@ mod tests {
         // Measure the number of allocations.
         let allocations = allocation_counter::measure(|| {
             // Packet builder.
-            let mut packet_builder = PacketBuilder::new(&mut packet);
+            let packet_builder = PacketBuilder::new(&mut packet);
 
             // Build the packet.
             packet_builder

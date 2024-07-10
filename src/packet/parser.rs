@@ -36,8 +36,8 @@ impl<'a> PacketParser<'a> {
         }
 
         let ethernet_parser = EthernetParser::new(packet)?;
-        let header_len = ethernet_parser.header_length();
-        let ethertype = ethernet_parser.get_ethertype();
+        let header_len = ethernet_parser.header_len();
+        let ethertype = ethernet_parser.ethertype();
 
         let mut parser = PacketParser {
             arp: None,
@@ -69,7 +69,7 @@ impl<'a> PacketParser<'a> {
     pub fn parse_arp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
         let arp_parser = ArpParser::new(data)?;
 
-        if arp_parser.get_oper() > 2 {
+        if arp_parser.oper() > 2 {
             return Err("ARP operation field is invalid, expected request (1) or reply (2).");
         }
 
@@ -83,12 +83,12 @@ impl<'a> PacketParser<'a> {
     pub fn parse_ipv4(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
         let ipv4_parser = IPv4Parser::new(data)?;
 
-        if ipv4_parser.get_version() != 4 {
+        if ipv4_parser.version() != 4 {
             return Err("IPv4 version field is invalid. Expected version 4.");
         }
 
-        let header_len = ipv4_parser.header_length();
-        let protocol = ipv4_parser.get_protocol();
+        let header_len = ipv4_parser.header_len();
+        let protocol = ipv4_parser.protocol();
 
         if header_len < IPV4_MIN_HEADER_LENGTH {
             return Err("IPv4 IHL field is invalid. Indicated header length is too short.");
@@ -115,11 +115,11 @@ impl<'a> PacketParser<'a> {
     pub fn parse_icmp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
         let icmp_parser = IcmpParser::new(data)?;
 
-        if IcmpType::from(icmp_parser.get_type()) == IcmpType::Unknown {
+        if IcmpType::from(icmp_parser.icmp_type()) == IcmpType::Unknown {
             return Err("ICMP type field is invalid.");
         }
 
-        if icmp_parser.get_code() > ICMP_MAX_VALID_CODE {
+        if icmp_parser.icmp_code() > ICMP_MAX_VALID_CODE {
             return Err("ICMP code field is invalid.");
         }
 
@@ -133,11 +133,11 @@ impl<'a> PacketParser<'a> {
     pub fn parse_tcp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
         let tcp_parser = TcpParser::new(data)?;
 
-        if tcp_parser.header_length() < TCP_MIN_HEADER_LENGTH {
+        if tcp_parser.header_len() < TCP_MIN_HEADER_LENGTH {
             return Err("TCP data offset field is invalid. Indicated header length is too short.");
         }
 
-        if tcp_parser.get_flags() == 0 {
+        if tcp_parser.flags() == 0 {
             return Err("TCP flags field is invalid.");
         }
 
@@ -151,9 +151,9 @@ impl<'a> PacketParser<'a> {
     pub fn parse_udp(&mut self, data: &'a [u8]) -> Result<(), &'static str> {
         let udp_parser = UdpParser::new(data)?;
 
-        let header_len = udp_parser.header_length();
-        let payload_len = udp_parser.get_payload().len();
-        let length_field = udp_parser.get_length() as usize;
+        let header_len = udp_parser.header_len();
+        let payload_len = udp_parser.payload().len();
+        let length_field = udp_parser.length() as usize;
 
         if length_field != header_len + payload_len {
             return Err("UDP length field is invalid. Does not match actual length.");
@@ -168,7 +168,7 @@ impl<'a> PacketParser<'a> {
     #[inline]
     pub fn verify_checksums(&self) -> Result<(), &'static str> {
         if let Some(ipv4) = &self.ipv4 {
-            if !verify_internet_checksum(ipv4.get_header()) {
+            if !verify_internet_checksum(ipv4.header()) {
                 return Err("IPv4 checksum is invalid.");
             }
         }
@@ -200,27 +200,27 @@ impl<'a> PacketParser<'a> {
         let mut len = 0;
 
         if let Some(ethernet) = &self.ethernet {
-            len += ethernet.header_length();
+            len += ethernet.header_len();
         }
 
         if let Some(arp) = &self.arp {
-            len += arp.header_length();
+            len += arp.header_len();
         }
 
         if let Some(ipv4) = &self.ipv4 {
-            len += ipv4.header_length();
+            len += ipv4.header_len();
         }
 
         if let Some(tcp) = &self.tcp {
-            len += tcp.header_length();
+            len += tcp.header_len();
         }
 
         if let Some(udp) = &self.udp {
-            len += udp.header_length();
+            len += udp.header_len();
         }
 
         if let Some(icmp) = &self.icmp {
-            len += icmp.header_length();
+            len += icmp.header_len();
         }
 
         len
@@ -290,10 +290,10 @@ mod tests {
         let icmp = unwrapped.icmp.unwrap();
 
         // Ensure the ICMP type is correct.
-        assert_eq!(IcmpType::from(icmp.get_type()), IcmpType::EchoRequest);
+        assert_eq!(IcmpType::from(icmp.icmp_type()), IcmpType::EchoRequest);
 
         // Extract the ICMP payload.
-        let payload = icmp.get_payload();
+        let payload = icmp.payload();
 
         // Ensure the payload is correct.
         assert_eq!(
@@ -338,11 +338,11 @@ mod tests {
         let icmp = unwrapped.icmp.unwrap();
 
         // Ensure the fields are correct.
-        assert_eq!(ethernet.get_ethertype(), 0x0800);
-        assert_eq!(ipv4.get_protocol(), 1);
-        assert_eq!(ipv4.get_checksum(), 0xfa30);
-        assert_eq!(icmp.get_type(), 0);
-        assert_eq!(icmp.get_code(), 0);
-        assert_eq!(icmp.get_checksum(), 0x45da);
+        assert_eq!(ethernet.ethertype(), 0x0800);
+        assert_eq!(ipv4.protocol(), 1);
+        assert_eq!(ipv4.checksum(), 0xfa30);
+        assert_eq!(icmp.icmp_type(), 0);
+        assert_eq!(icmp.icmp_code(), 0);
+        assert_eq!(icmp.checksum(), 0x45da);
     }
 }

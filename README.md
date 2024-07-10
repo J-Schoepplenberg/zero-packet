@@ -11,6 +11,7 @@ No async, no allocations, no dependencies, no macros, no std, no unsafe. It simp
 Use `zero-packet` if you are working with raw sockets.
 
 Supported protocols:
+
 - Ethernet
 - ARP
 - IPv4
@@ -42,22 +43,25 @@ If you want to create network packets manually and efficiently, look no further.
 ```Rust
 // Raw packet that we will mutate in-place.
 // Ethernet header (14 bytes) + IPv4 header (20 bytes) + UDP header (8 bytes) = 42 bytes.
-let mut packet = [0u8; 53]
+let mut buffer = [0u8; 53]
 
 // Some random payload (11 bytes).
 let payload = b"Hello, UDP!";
 
-// PacketBuilder which holds a mutable reference to the byte slice.
-let mut packet_builder = PacketBuilder::new(&mut packet);
+// PacketBuilder is a zero-copy packet builder.
+// Using the typestate pattern, a state machine is implemented using the type system.
+// The state machine ensures that the package is built correctly.
+let mut packet_builder = PacketBuilder::new(&mut buffer);
 
 // Sets Ethernet, IPv4 and UDP header fields.
 // Optional: add payload to the packet.
 // Encapsulates everything in the given byte slice.
-packet_builder
+let packet: &[u8] = packet_builder
     .ethernet(src_mac, dest_mac, ethertype)?
     .ipv4(version, ihl, dscp, ecn, total_length, id, flags, fragment_offset, ttl, protocol, src_ip, dest_ip)?
     .udp(src_ip, src_port, dest_ip, dest_port, length)?
-    .payload(payload)?;
+    .write_payload(payload)?
+    .build();
 ```
 
 ### PacketParser
@@ -98,6 +102,7 @@ if let Some(tcp) = TcpParser::new(&packet)? {
 ## Roadmap
 
 Upcoming features:
+
 - [ ] IPv6
 - [ ] ICMPv6
 - [ ] IPsec
