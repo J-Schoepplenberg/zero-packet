@@ -1,6 +1,6 @@
 [package]
 name = "zero-packet"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Jannis Schoepplenberg <jschoe@proton.me>"]
 description = "A zero-copy Rust library that builds and parses network packets in-place."
 keywords = ["networking", "packets", "protocols", "tcp", "ethernet"]
