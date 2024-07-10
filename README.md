@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/zero-packet.svg)](https://crates.io/crates/zero-packet)
 [![MIT](https://img.shields.io/badge/License-MIT-orange.svg)](https://github.com/J-Schoepplenberg/zero-packet/blob/main/LICENSE)
-[![docs.rs](https://docs.rs/zero-packet/badge.svg)](https://docs.rs/zero-packet/0.0.1/zero_packet/)
+[![docs.rs](https://docs.rs/zero-packet/badge.svg)](https://docs.rs/zero-packet/latest/zero_packet/index.html)
 
 Super simple library to efficiently build and parse network packets in-place with zero overhead.
 
