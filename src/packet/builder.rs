@@ -302,7 +302,7 @@ mod tests {
                 .unwrap();
         });
 
-        // Output should match the exepectation.
+        // Output should match the expectation.
         assert_eq!(packet, should_be);
 
         // Ensure zero allocations.
@@ -365,7 +365,7 @@ mod tests {
                 .unwrap();
         });
 
-        // Output should match the exepectation.
+        // Output should match the expectation.
         assert_eq!(packet, should_be);
 
         // Ensure zero allocations.
@@ -416,7 +416,7 @@ mod tests {
                 .unwrap();
         });
 
-        // Output should match the exepectation.
+        // Output should match the expectation.
         assert_eq!(packet, should_be);
 
         // Ensure zero allocations.
@@ -467,7 +467,7 @@ mod tests {
                 .unwrap();
         });
 
-        // Output should match the exepectation.
+        // Output should match the expectation.
         assert_eq!(packet, should_be);
 
         // Ensure zero allocations.
