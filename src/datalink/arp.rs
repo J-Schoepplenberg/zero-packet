@@ -4,7 +4,7 @@ use core::{fmt, str::from_utf8};
 /// The length of an ARP header in bytes.
 pub const ARP_HEADER_LENGTH: usize = 28;
 
-/// Represents an ARP header.
+/// Writes ARP header fields.
 pub struct ArpWriter<'a> {
     pub bytes: &'a mut [u8],
 }
@@ -118,6 +118,7 @@ impl<'a> ArpWriter<'a> {
     }
 }
 
+/// Reads ARP header fields.
 #[derive(PartialEq)]
 pub struct ArpReader<'a> {
     pub bytes: &'a [u8],

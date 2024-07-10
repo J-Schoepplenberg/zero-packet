@@ -4,7 +4,7 @@ use core::fmt;
 /// The minimum length of a TCP header in bytes.
 pub const TCP_MIN_HEADER_LENGTH: usize = 20;
 
-/// Represents a TCP segment.
+/// Writes TCP header fields.
 pub struct TcpWriter<'a> {
     pub bytes: &'a mut [u8],
 }
@@ -105,6 +105,7 @@ impl<'a> TcpWriter<'a> {
 }
 
 
+/// Reads TCP header fields.
 #[derive(PartialEq)]
 pub struct TcpReader<'a> {
     pub bytes: &'a [u8],

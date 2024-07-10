@@ -4,7 +4,7 @@ use core::fmt;
 /// The length of a UDP header in bytes.
 pub const UDP_HEADER_LENGTH: usize = 8;
 
-/// Represents a UDP packet.
+/// Writes UDP header fields.
 pub struct UdpWriter<'a> {
     pub bytes: &'a mut [u8],
 }
@@ -64,6 +64,7 @@ impl<'a> UdpWriter<'a> {
     }
 }
 
+/// Reads UDP header fields.
 #[derive(PartialEq)]
 pub struct UdpReader<'a> {
     pub bytes: &'a [u8],

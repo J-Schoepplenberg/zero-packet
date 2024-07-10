@@ -7,7 +7,7 @@ pub const ETHERNET_MIN_HEADER_LENGTH: usize = 14;
 /// The minimum length of an Ethernet frame in bytes.
 pub const ETHERNET_MIN_FRAME_LENGTH: usize = 64;
 
-/// Represents an Ethernet frame builder.
+/// Writes Ethernet header fields.
 pub struct EthernetWriter<'a> {
     pub bytes: &'a mut [u8],
 }
@@ -63,7 +63,7 @@ impl<'a> EthernetWriter<'a> {
     }
 }
 
-/// Represents an Ethernet frame parser.
+/// Reads Ethernet header fields.
 #[derive(PartialEq)]
 pub struct EthernetReader<'a> {
     bytes: &'a [u8],

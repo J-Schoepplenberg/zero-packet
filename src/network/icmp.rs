@@ -7,7 +7,7 @@ pub const ICMP_HEADER_LENGTH: usize = 8;
 /// The maximum valid ICMP type.
 pub const ICMP_MAX_VALID_CODE: u8 = 15;
 
-/// Represents an ICMP header.
+/// Writes ICMP header fields.
 pub struct IcmpWriter<'a> {
     pub bytes: &'a mut [u8],
 }
@@ -54,6 +54,7 @@ impl<'a> IcmpWriter<'a> {
     }
 }
 
+/// Reads an ICMP header.
 #[derive(PartialEq)]
 pub struct IcmpReader<'a> {
     pub bytes: &'a [u8],

@@ -5,7 +5,7 @@ use core::fmt;
 /// The length of an IPv4 header in bytes without options.
 pub const IPV4_MIN_HEADER_LENGTH: usize = 20;
 
-/// Represents an IPv4 packet.
+/// Writes IPv4 header fields.
 pub struct IPv4Writer<'a> {
     pub bytes: &'a mut [u8],
 }
@@ -123,6 +123,7 @@ impl<'a> IPv4Writer<'a> {
     }
 }
 
+/// Reads IPv4 header fields.
 #[derive(PartialEq)]
 pub struct IPv4Reader<'a> {
     pub bytes: &'a [u8],
