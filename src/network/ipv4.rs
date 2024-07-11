@@ -11,8 +11,7 @@ pub struct IPv4Writer<'a> {
 }
 
 impl<'a> IPv4Writer<'a> {
-    /// Creates a new `IPv4Packet` from the given data slice.
-    /// Returns an error if the data Slice is too short to contain an IPv4 header.
+    /// Creates a new `IPv4Writer` from the given slice.
     #[inline]
     pub fn new(bytes: &'a mut [u8]) -> Result<Self, &'static str> {
         if bytes.len() < IPV4_MIN_HEADER_LENGTH {
@@ -29,6 +28,8 @@ impl<'a> IPv4Writer<'a> {
     }
 
     /// Sets the version field.
+    /// 
+    /// Indicates the IP version number. Should be set to 4.
     #[inline]
     pub fn set_version(&mut self, version: u8) {
         self.bytes[0] = (self.bytes[0] & 0x0F) | (version << 4);
@@ -53,6 +54,8 @@ impl<'a> IPv4Writer<'a> {
     }
 
     /// Sets the total length field.
+    /// 
+    /// Includes the entire packet (header and payload).
     #[inline]
     pub fn set_total_length(&mut self, total_length: u16) {
         self.bytes[2] = (total_length >> 8) as u8;
@@ -130,7 +133,7 @@ pub struct IPv4Reader<'a> {
 }
 
 impl<'a> IPv4Reader<'a> {
-    /// Creates a new `IPv4Packet` from the given data slice.
+    /// Creates a new `IPv4Reader` from the given slice.
     #[inline]
     pub fn new(bytes: &'a [u8]) -> Result<Self, &'static str> {
         if bytes.len() < IPV4_MIN_HEADER_LENGTH {
@@ -165,6 +168,8 @@ impl<'a> IPv4Reader<'a> {
     }
 
     /// Returns the total length field.
+    /// 
+    /// Includes the entire packet (header and payload).
     #[inline]
     pub fn total_length(&self) -> u16 {
         ((self.bytes[2] as u16) << 8) | (self.bytes[3] as u16)

@@ -10,7 +10,7 @@ pub struct TcpWriter<'a> {
 }
 
 impl<'a> TcpWriter<'a> {
-    /// Creates a new `TcpSegment` from the given data slice.
+    /// Creates a new `TcpWriter` from the given slice.
     #[inline]
     pub fn new(bytes: &'a mut [u8]) -> Result<Self, &'static str> {
         if bytes.len() < TCP_MIN_HEADER_LENGTH {
@@ -112,7 +112,7 @@ pub struct TcpReader<'a> {
 }
 
 impl<'a> TcpReader<'a> {
-    /// Creates a new `TcpSegment` from the given data slice.
+    /// Creates a new `TcpReader` from the given slice.
     #[inline]
     pub fn new(bytes: &'a [u8]) -> Result<Self, &'static str> {
         if bytes.len() < TCP_MIN_HEADER_LENGTH{

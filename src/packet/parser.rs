@@ -5,7 +5,7 @@ use crate::{
     },
     misc::{EtherType, IcmpType, IpProtocol},
     network::{
-        checksum::verify_internet_checksum,
+        checksum::{pseudo_header, verify_internet_checksum},
         icmp::{IcmpReader, ICMP_MAX_VALID_CODE},
         ipv4::{IPv4Reader, IPV4_MIN_HEADER_LENGTH},
     },
@@ -60,7 +60,7 @@ impl<'a> PacketParser<'a> {
         Ok(parser)
     }
 
-    /// Parses a ARP header.
+    /// Parses an ARP header.
     ///
     /// ARP was originally designed for Ethernet, IPv4 and MAC addresses.
     ///
@@ -110,7 +110,7 @@ impl<'a> PacketParser<'a> {
         Ok(())
     }
 
-    /// Parses a ICMP packet.
+    /// Parses a ICMP header.
     #[inline]
     pub fn parse_icmp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
         let reader = IcmpReader::new(bytes)?;
@@ -164,33 +164,58 @@ impl<'a> PacketParser<'a> {
         Ok(())
     }
 
-    /// Verifies the checksums of the headers.
+    /// Verifies the checksums of encapsulated headers.
     #[inline]
     pub fn verify_checksums(&self) -> Result<(), &'static str> {
-        if let Some(ipv4) = &self.ipv4 {
-            if !verify_internet_checksum(ipv4.header()) {
-                return Err("IPv4 checksum is invalid.");
-            }
-        }
+        let pseudo = self
+            .ipv4
+            .as_ref()
+            .map(|ipv4| {
+                if !verify_internet_checksum(ipv4.header(), 0) {
+                    return Err("IPv4 checksum is invalid.");
+                }
+                Ok((ipv4.src_ip(), ipv4.dest_ip(), ipv4.protocol()))
+            })
+            .transpose()?;
 
         if let Some(icmp) = &self.icmp {
-            if !verify_internet_checksum(icmp.bytes) {
+            if !verify_internet_checksum(icmp.bytes, 0) {
                 return Err("ICMP checksum is invalid.");
             }
         }
 
         if let Some(tcp) = &self.tcp {
-            if !verify_internet_checksum(tcp.bytes) {
-                return Err("TCP checksum is invalid.");
-            }
+            Self::verify_transport_checksum(tcp.bytes, pseudo)?;
         }
 
         if let Some(udp) = &self.udp {
-            if !verify_internet_checksum(udp.bytes) {
-                return Err("UDP checksum is invalid.");
-            }
+            Self::verify_transport_checksum(udp.bytes, pseudo)?;
         }
 
+        Ok(())
+    }
+
+    /// Verifies the checksum of a transport protocol.
+    ///
+    /// Takes the pseudo header into account.
+    #[inline]
+    fn verify_transport_checksum(
+        bytes: &[u8],
+        pseudo: Option<(&[u8], &[u8], u8)>,
+    ) -> Result<(), &'static str> {
+        let (src_ip, dest_ip, protocol) =
+            pseudo.ok_or("Checksum cannot be verified without a pseudo header.")?;
+        let sip = src_ip.try_into().unwrap();
+        let dip = dest_ip.try_into().unwrap();
+        let pseudo_sum = pseudo_header(sip, dip, protocol, bytes.len());
+
+        if !verify_internet_checksum(bytes, pseudo_sum) {
+            return Err(match IpProtocol::from(protocol) {
+                IpProtocol::TCP => "TCP checksum is invalid.",
+                IpProtocol::UDP => "UDP checksum is invalid.",
+                _ => "Unsupported protocol checksum.",
+            });
+        }
         Ok(())
     }
 
@@ -277,14 +302,20 @@ mod tests {
         assert!(unwrapped.tcp.is_none());
         assert!(unwrapped.udp.is_none());
 
-        // Get the total length of all headers.
-        let header_len = unwrapped.header_len();
-
         // Ensure the header length is correct.
-        assert_eq!(header_len, 42);
+        assert_eq!(unwrapped.header_len(), 42);
 
         // Verify the checksums.
         assert!(unwrapped.verify_checksums().is_ok());
+
+        // Unwrap the Ethernet header.
+        let ethernet = unwrapped.ethernet.unwrap();
+
+        // Ensure there is no VLAN tag.
+        assert!(ethernet.vlan_tag().is_none());
+
+        // Ensure there is no double VLAN tag.
+        assert!(ethernet.double_vlan_tag().is_none());
 
         // Unwrap the ICMP header.
         let icmp = unwrapped.icmp.unwrap();
@@ -303,6 +334,129 @@ mod tests {
     }
 
     #[test]
+    fn test_vlan_tagged_frame() {
+        // Valid VLAN tagged packet (Ethernet II + IPv4 + UDP).
+        let packet = [
+            // Ethernet header
+            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC
+            0x5E, 0x4D, 0x3C, 0x2B, 0x1A, 0x00, // Source MAC
+            0x81, 0x00, // VLAN Ethertype
+            0x00, 0x64, // VLAN Tag (priority 0, CFI 0, VLAN ID 100)
+            0x08, 0x00, // Ethertype (IPv4)
+            // IPv4 header
+            0x45, 0x00, 0x00, 0x2e, // Version, IHL, DSCP, ECN, Total Length (46 bytes)
+            0x00, 0x00, 0x00, 0x00, // Identification, Flags, Fragment Offset
+            0x40, 0x11, 0xf9, 0x6b, // TTL (64), Protocol (UDP), IPv4 Checksum
+            0xC0, 0xA8, 0x00, 0x01, // Source IP (192.168.0.1)
+            0xC0, 0xA8, 0x00, 0x02, // Destination IP (192.168.0.2)
+            // UDP header
+            0x04, 0xD2, 0x16, 0x2E, // Source Port (1234), Destination Port (5678)
+            0x00, 0x1a, 0x63, 0x66, // Length (26 bytes), UDP Checksum
+            // Padding
+            0x00, 0x00, 0x00, 0x00, // Padding
+            0x00, 0x00, 0x00, 0x00, // Padding
+            0x00, 0x00, 0x00, 0x00, // Padding
+            0x00, 0x00, 0x00, 0x00, // Padding
+            0x00, 0x00, // Padding
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected headers.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv4.is_some());
+        assert!(unwrapped.udp.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmp.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.tcp.is_none());
+
+        // Unwrap Ethernet II.
+        let ethernet = unwrapped.ethernet.unwrap();
+
+        // Ensure the VLAN tagging.
+        assert!(ethernet.vlan_tag().is_some());
+        assert!(ethernet.double_vlan_tag().is_none());
+
+        // Ensure the VLAN tag is correct.
+        assert_eq!(ethernet.vlan_tag().unwrap(), (0x8100, 100));
+
+        // Ensure the EtherType is correct.
+        assert_eq!(ethernet.ethertype(), 0x0800);
+    }
+
+    #[test]
+    fn test_double_vlan_tagged_frame() {
+        let packet = [
+            // Ethernet header
+            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC
+            0x5E, 0x4D, 0x3C, 0x2B, 0x1A, 0x00, // Source MAC
+            0x88, 0xA8, // Outer VLAN Ethertype
+            0x00, 0xC8, // Outer VLAN Tag (priority 0, CFI 0, VLAN ID 200)
+            0x81, 0x00, // Inner VLAN Ethertype
+            0x00, 0x64, // Inner VLAN Tag (priority 0, CFI 0, VLAN ID 100)
+            0x08, 0x00, // Ethertype (IPv4)
+            // IPv4 header
+            0x45, 0x00, 0x00, 0x2a, // Version, IHL, DSCP, ECN, Total Length (42 bytes)
+            0x00, 0x00, 0x00, 0x00, // Identification, Flags, Fragment Offset
+            0x40, 0x11, 0xf9, 0x6f, // TTL (64), Protocol (UDP), IPv4 Checksum
+            0xC0, 0xA8, 0x00, 0x01, // Source IP (192.168.0.1)
+            0xC0, 0xA8, 0x00, 0x02, // Destination IP (192.168.0.2)
+            // UDP header
+            0x04, 0xD2, 0x16, 0x2E, // Source Port (1234), Destination Port (5678)
+            0x00, 0x16, 0x63, 0x6e, // Length (22 bytes), UDP Checksum (0x6366)
+            // Padding
+            0x00, 0x00, 0x00, 0x00, // Padding
+            0x00, 0x00, 0x00, 0x00, // Padding
+            0x00, 0x00, 0x00, 0x00, // Padding
+            0x00, 0x00, // Padding
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected headers.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv4.is_some());
+        assert!(unwrapped.udp.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmp.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.tcp.is_none());
+
+        // Unwrap Ethernet II.
+        let ethernet = unwrapped.ethernet.unwrap();
+
+        // Ensure the VLAN tagging.
+        assert!(ethernet.vlan_tag().is_none());
+        assert!(ethernet.double_vlan_tag().is_some());
+
+        // Ensure the double VLAN tag is correct.
+        assert_eq!(
+            ethernet.double_vlan_tag().unwrap(),
+            ((0x88A8, 200), (0x8100, 100))
+        );
+
+        // Ensure the EtherType is correct.
+        assert_eq!(ethernet.ethertype(), 0x0800);
+    }
+
+    #[test]
     fn test_guess_icmp_echo_response() {
         // ICMP echo response (Ethernet + IPv4 + ICMP).
         let packet = [
@@ -316,13 +470,13 @@ mod tests {
         ];
 
         // Parse the packet.
-        let packet_parser = PacketParser::parse(&packet);
+        let parser = PacketParser::parse(&packet);
 
         // Ensure the parser succeeds.
-        assert!(packet_parser.is_ok());
+        assert!(parser.is_ok());
 
         // Unwrap the parser.
-        let unwrapped = packet_parser.unwrap();
+        let unwrapped = parser.unwrap();
 
         // Ensure the parser has the expected fields.
         assert!(unwrapped.ethernet.is_some());

@@ -13,7 +13,7 @@ pub struct IcmpWriter<'a> {
 }
 
 impl<'a> IcmpWriter<'a> {
-    /// Creates a new `Icmp` from the given data slice.
+    /// Creates a new `IcmpWriter` from the given slice.
     #[inline]
     pub fn new(bytes: &'a mut [u8]) -> Result<Self, &'static str> {
         if bytes.len() < ICMP_HEADER_LENGTH {
@@ -61,7 +61,7 @@ pub struct IcmpReader<'a> {
 }
 
 impl<'a> IcmpReader<'a> {
-    /// Creates a new `Icmp` from the given data slice.
+    /// Creates a new `IcmpReader` from the given slice.
     #[inline]
     pub fn new(bytes: &'a [u8]) -> Result<Self, &'static str> {
         if bytes.len() < ICMP_HEADER_LENGTH {

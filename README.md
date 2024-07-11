@@ -10,9 +10,11 @@ No async, no allocations, no dependencies, no macros, no std, no unsafe. It simp
 
 Use `zero-packet` if you are working with raw sockets.
 
-Supported protocols:
+Supported protocols and headers:
 
-- Ethernet
+- Ethernet II
+    - VLAN tagging (IEEE 802.1Q)
+    - Double tagging (IEEE 802.1ad)
 - ARP
 - IPv4
 - TCP
@@ -33,7 +35,7 @@ Or add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zero-packet = "0.0.4"
+zero-packet = "0.0.5"
 ```
 
 ### PacketBuilder

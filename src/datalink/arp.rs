@@ -10,7 +10,7 @@ pub struct ArpWriter<'a> {
 }
 
 impl<'a> ArpWriter<'a> {
-    /// Creates a new `Arp` from the given slice.
+    /// Creates a new `ArpWriter` from the given slice.
     #[inline]
     pub fn new(bytes: &'a mut [u8]) -> Result<Self, &'static str> {
         if bytes.len() < ARP_HEADER_LENGTH {
@@ -125,7 +125,7 @@ pub struct ArpReader<'a> {
 }
 
 impl<'a> ArpReader<'a> {
-    /// Creates a new `Arp` from the given slice.
+    /// Creates a new `ArpReader` from the given slice.
     #[inline]
     pub fn new(bytes: &'a [u8]) -> Result<Self, &'static str> {
         if bytes.len() < ARP_HEADER_LENGTH {

@@ -1,7 +1,7 @@
 use crate::{
     datalink::{
         arp::ArpWriter,
-        ethernet::{EthernetWriter, ETHERNET_MIN_HEADER_LENGTH},
+        ethernet::{EthernetWriter, ETHERNET_MIN_HEADER_LENGTH, VLAN_TAG_LENGTH},
     },
     network::{icmp::IcmpWriter, ipv4::IPv4Writer},
     transport::{tcp::TcpWriter, udp::UdpWriter},
@@ -122,6 +122,60 @@ impl<'a> PacketBuilder<'a, RawState> {
         ethernet_frame.set_ethertype(ethertype);
 
         self.header_len = ETHERNET_MIN_HEADER_LENGTH;
+
+        Ok(PacketBuilder {
+            bytes: self.bytes,
+            header_len: self.header_len,
+            _state: EthernetHeaderState,
+        })
+    }
+
+    /// Sets Ethernet II header fields with VLAN tagging.
+    ///
+    /// Transition: Raw -> EthernetHeader.
+    pub fn ethernet_vlan(
+        mut self,
+        src_mac: &[u8; 6],
+        dest_mac: &[u8; 6],
+        ethertype: u16,
+        tci: u16,
+    ) -> Result<PacketBuilder<'a, EthernetHeaderState>, &'static str> {
+        let mut ethernet_frame = EthernetWriter::new(self.bytes)?;
+
+        ethernet_frame.set_src_mac(src_mac);
+        ethernet_frame.set_dest_mac(dest_mac);
+        ethernet_frame.set_vlan_tag(0x8100, tci)?;
+        ethernet_frame.set_ethertype(ethertype);
+
+        self.header_len = ETHERNET_MIN_HEADER_LENGTH + VLAN_TAG_LENGTH;
+
+        Ok(PacketBuilder {
+            bytes: self.bytes,
+            header_len: self.header_len,
+            _state: EthernetHeaderState,
+        })
+    }
+
+    /// Sets Ethernet II header fields with double VLAN tagging.
+    /// 
+    /// Transition: Raw -> EthernetHeader.
+    pub fn ethernet_qinq(
+        mut self,
+        src_mac: &[u8; 6],
+        dest_mac: &[u8; 6],
+        ethertype: u16,
+        tci1: u16,
+        tci2: u16,
+    ) -> Result<PacketBuilder<'a, EthernetHeaderState>, &'static str> {
+        let mut ethernet_frame = EthernetWriter::new(self.bytes)?;
+
+        ethernet_frame.set_src_mac(src_mac);
+        ethernet_frame.set_dest_mac(dest_mac);
+        ethernet_frame.set_vlan_tag(0x88a8, tci1)?;
+        ethernet_frame.set_vlan_tag(0x8100, tci2)?;
+        ethernet_frame.set_ethertype(ethertype);
+
+        self.header_len = ETHERNET_MIN_HEADER_LENGTH + 2 * VLAN_TAG_LENGTH;
 
         Ok(PacketBuilder {
             bytes: self.bytes,

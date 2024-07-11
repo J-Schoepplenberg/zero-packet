@@ -49,8 +49,8 @@ pub fn pseudo_header(src_ip: &[u8; 4], dest_ip: &[u8; 4], protocol: u8, length: 
 ///
 /// No error should yield 0000.
 #[inline]
-pub fn verify_internet_checksum(data: &[u8]) -> bool {
-    internet_checksum(data, 0) == 0
+pub fn verify_internet_checksum(data: &[u8], accumulator: u32) -> bool {
+    internet_checksum(data, accumulator) == 0
 }
 
 #[cfg(test)]
@@ -104,6 +104,6 @@ mod tests {
             0x45, 0x00, 0x00, 0x73, 0x00, 0x00, 0x40, 0x00, 0x40, 0x11, 0xb8, 0x61, 0xc0, 0xa8,
             0x00, 0x01, 0xc0, 0xa8, 0x00, 0xc7,
         ];
-        assert!(verify_internet_checksum(&data));
+        assert!(verify_internet_checksum(&data, 0));
     }
 }
