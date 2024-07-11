@@ -27,7 +27,7 @@
 
     ```toml
     [dependencies]
-    zero-packet = "0.0.1"
+    zero-packet = "0.0.6"
     ```
 
     ## PacketBuilder

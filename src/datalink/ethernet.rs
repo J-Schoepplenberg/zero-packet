@@ -74,9 +74,11 @@ impl<'a> EthernetWriter<'a> {
         self.bytes[13 + offset] = (ethertype & 0xFF) as u8;
     }
 
-    /// Adds a VLAN tag.
+    /// Sets a VLAN tag.
     /// 
     /// Optionally present in the Ethernet frame header.
+    /// 
+    /// Increases the header length by VLAN_TAG_LENGTH.
     #[inline]
     pub fn set_vlan_tag(&mut self, tpid: u16, tci: u16) -> Result<(), &'static str> {
         if self.bytes.len() < self.header_len + VLAN_TAG_LENGTH {
@@ -93,9 +95,11 @@ impl<'a> EthernetWriter<'a> {
         Ok(())
     }
 
-    /// Adds a double VLAN tag (Q-in-Q).
+    /// Sets a double VLAN tag (Q-in-Q).
     /// 
     /// Optionally present in the Ethernet frame header.
+    /// 
+    /// Increases the header length by 2 * VLAN_TAG_LENGTH.
     #[inline]
     pub fn set_double_vlan_tag(
         &mut self,
@@ -158,16 +162,20 @@ impl<'a> EthernetReader<'a> {
                 if bytes.len() < ETHERNET_MIN_HEADER_LENGTH + VLAN_TAG_LENGTH {
                     return Err("Slice is too short to contain VLAN tagging.");
                 }
+
                 header_len += VLAN_TAG_LENGTH;
             }
             ETHERTYPE_QINQ => {
                 if bytes.len() < ETHERNET_MIN_HEADER_LENGTH + 2 * VLAN_TAG_LENGTH {
                     return Err("Slice is too short to contain double VLAN tagging.");
                 }
+
                 let next_tpid = ((bytes[16] as u16) << 8) | (bytes[17] as u16);
+
                 if next_tpid != ETHERTYPE_VLAN {
                     return Err("Invalid double VLAN tag.");
                 }
+
                 header_len += 2 * VLAN_TAG_LENGTH;
             }
             _ => {}

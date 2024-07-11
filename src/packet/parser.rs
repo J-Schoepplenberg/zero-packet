@@ -205,8 +205,10 @@ impl<'a> PacketParser<'a> {
     ) -> Result<(), &'static str> {
         let (src_ip, dest_ip, protocol) =
             pseudo.ok_or("Checksum cannot be verified without a pseudo header.")?;
+
         let sip = src_ip.try_into().unwrap();
         let dip = dest_ip.try_into().unwrap();
+
         let pseudo_sum = pseudo_header(sip, dip, protocol, bytes.len());
 
         if !verify_internet_checksum(bytes, pseudo_sum) {
@@ -216,6 +218,7 @@ impl<'a> PacketParser<'a> {
                 _ => "Unsupported protocol checksum.",
             });
         }
+        
         Ok(())
     }
 
@@ -395,6 +398,7 @@ mod tests {
 
     #[test]
     fn test_double_vlan_tagged_frame() {
+        // Valid double VLAN tagged packet (Ethernet II + IPv4 + UDP).
         let packet = [
             // Ethernet header
             0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC

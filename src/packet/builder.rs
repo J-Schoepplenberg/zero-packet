@@ -157,7 +157,7 @@ impl<'a> PacketBuilder<'a, RawState> {
     }
 
     /// Sets Ethernet II header fields with double VLAN tagging.
-    /// 
+    ///
     /// Transition: Raw -> EthernetHeader.
     pub fn ethernet_qinq(
         mut self,
@@ -171,8 +171,7 @@ impl<'a> PacketBuilder<'a, RawState> {
 
         ethernet_frame.set_src_mac(src_mac);
         ethernet_frame.set_dest_mac(dest_mac);
-        ethernet_frame.set_vlan_tag(0x88a8, tci1)?;
-        ethernet_frame.set_vlan_tag(0x8100, tci2)?;
+        ethernet_frame.set_double_vlan_tag(0x88a8, tci1, 0x8100, tci2)?;
         ethernet_frame.set_ethertype(ethertype);
 
         self.header_len = ETHERNET_MIN_HEADER_LENGTH + 2 * VLAN_TAG_LENGTH;

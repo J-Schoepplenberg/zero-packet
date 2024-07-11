@@ -35,7 +35,7 @@ Or add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zero-packet = "0.0.5"
+zero-packet = "0.0.6"
 ```
 
 ### PacketBuilder
