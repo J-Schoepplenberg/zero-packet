@@ -188,14 +188,14 @@ impl<'a> EthernetReader<'a> {
     #[inline]
     pub fn is_vlan_tagged(bytes: &[u8]) -> bool {
         let ethertype = ((bytes[12] as u16) << 8) | (bytes[13] as u16);
-        ethertype == 0x8100
+        ethertype == ETHERTYPE_VLAN
     }
 
     /// Checks if the Ethernet frame is double VLAN tagged (Q-in-Q).
     #[inline]
     pub fn is_vlan_double_tagged(bytes: &[u8]) -> bool {
         let ethertype = ((bytes[12] as u16) << 8) | (bytes[13] as u16);
-        ethertype == 0x88A8
+        ethertype == ETHERTYPE_QINQ
     }
 
     /// Returns the destination MAC address field.
