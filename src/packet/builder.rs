@@ -471,7 +471,7 @@ mod tests {
     use super::*;
     use crate::{
         datalink::arp::ARP_HEADER_LENGTH, network::ipv4::IPV4_MIN_HEADER_LENGTH,
-        transport::udp::UDP_HEADER_LENGTH,
+        packet::parser::PacketParser, transport::udp::UDP_HEADER_LENGTH,
     };
 
     #[test]
@@ -789,5 +789,78 @@ mod tests {
 
         // Ensure zero allocations.
         assert_eq!(allocations.count_total, 0);
+    }
+
+    #[test]
+    fn test_build_and_parse_qinq() {
+        // Raw packet data.
+        let mut buffer = [0u8; 64];
+
+        // Build a valid packet
+        let packet = PacketBuilder::new(&mut buffer)
+            // 22 bytes
+            .ethernet_qinq(
+                &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                &[0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7],
+                2048,
+                200,
+                100,
+            )
+            .unwrap()
+            // 20 bytes
+            .ipv4(
+                4,
+                5,
+                99,
+                123,
+                42,
+                54321,
+                99,
+                12345,
+                123,
+                17,
+                &[192, 168, 1, 1],
+                &[192, 168, 1, 2],
+            )
+            .unwrap()
+            // 8 bytes
+            .udp(&[192, 168, 1, 1], 99, &[192, 168, 1, 2], 11, 22)
+            .unwrap()
+            .build();
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser is successful.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the expected headers are present.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv4.is_some());
+        assert!(unwrapped.udp.is_some());
+
+        // Ensure the unexpected headers are not present.
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.icmp.is_none());
+        assert!(unwrapped.tcp.is_none());
+
+        // Unwrap ethernet.
+        let ethernet = unwrapped.ethernet.unwrap();
+
+        // Ensure expected VLAN tags are present.
+        assert!(ethernet.vlan_tag().is_none());
+        assert!(ethernet.double_vlan_tag().is_some());
+
+        // Ensure the expected fields are present.
+        assert_eq!(ethernet.src_mac(), [0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f]);
+        assert_eq!(ethernet.dest_mac(), [0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7]);
+        assert_eq!(ethernet.ethertype(), 2048);
+        assert_eq!(
+            ethernet.double_vlan_tag().unwrap(),
+            ((ETHERTYPE_QINQ, 200), (ETHERTYPE_VLAN, 100))
+        );
     }
 }

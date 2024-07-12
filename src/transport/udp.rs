@@ -41,6 +41,8 @@ impl<'a> UdpWriter<'a> {
     }
 
     /// Sets the length field.
+    /// 
+    /// Should include the entire packet (header and payload).
     #[inline]
     pub fn set_length(&mut self, length: u16) {
         self.bytes[4] = (length >> 8) as u8;
@@ -94,6 +96,8 @@ impl<'a> UdpReader<'a> {
     }
 
     /// Returns the length field.
+    /// 
+    /// Includes the entire packet (header and payload).
     #[inline]
     pub fn length(&self) -> u16 {
         ((self.bytes[4] as u16) << 8) | (self.bytes[5] as u16)

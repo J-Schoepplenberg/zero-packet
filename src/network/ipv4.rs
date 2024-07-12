@@ -55,7 +55,7 @@ impl<'a> IPv4Writer<'a> {
 
     /// Sets the total length field.
     /// 
-    /// Includes the entire packet (header and payload).
+    /// Should include the entire packet (header and payload).
     #[inline]
     pub fn set_total_length(&mut self, total_length: u16) {
         self.bytes[2] = (total_length >> 8) as u8;

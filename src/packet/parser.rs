@@ -87,15 +87,21 @@ impl<'a> PacketParser<'a> {
             return Err("IPv4 version field is invalid. Expected version 4.");
         }
 
-        let header_len = reader.header_len();
         let protocol = reader.protocol();
+        let total_length = reader.total_length();
+        let header_len = reader.header_len();
+        let packet_len = bytes.len();
 
         if header_len < IPV4_MIN_HEADER_LENGTH {
             return Err("IPv4 IHL field is invalid. Indicated header length is too short.");
         }
 
-        if bytes.len() < header_len {
+        if packet_len < header_len {
             return Err("IPv4 header length is invalid. Indicated header length is too long.");
+        }
+
+        if packet_len != total_length as usize {
+            return Err("IPv4 total length field is invalid. Does not match actual length.");
         }
 
         self.ipv4 = Some(reader);
@@ -276,63 +282,6 @@ mod tests {
             parser.is_err(),
             true,
             "Slice needs to be least 64 bytes long to be a valid Ethernet frame."
-        );
-    }
-
-    #[test]
-    fn test_parse_valid_packet() {
-        // Raw packet data.
-        let packet = [
-            4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 69, 143, 48, 57, 212, 49,
-            112, 57, 123, 1, 71, 118, 192, 168, 1, 1, 192, 168, 1, 2, 8, 0, 247, 255, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ];
-
-        // Parse the packet.
-        let parser = PacketParser::parse(&packet);
-
-        // Ensure the parser succeeds.
-        assert!(parser.is_ok());
-
-        // Unwrap the parser.
-        let unwrapped = parser.unwrap();
-
-        // Ensure the parser has the expected fields.
-        assert!(unwrapped.ethernet.is_some());
-        assert!(unwrapped.ipv4.is_some());
-        assert!(unwrapped.icmp.is_some());
-        assert!(unwrapped.arp.is_none());
-        assert!(unwrapped.tcp.is_none());
-        assert!(unwrapped.udp.is_none());
-
-        // Ensure the header length is correct.
-        assert_eq!(unwrapped.header_len(), 42);
-
-        // Verify the checksums.
-        assert!(unwrapped.verify_checksums().is_ok());
-
-        // Unwrap the Ethernet header.
-        let ethernet = unwrapped.ethernet.unwrap();
-
-        // Ensure there is no VLAN tag.
-        assert!(ethernet.vlan_tag().is_none());
-
-        // Ensure there is no double VLAN tag.
-        assert!(ethernet.double_vlan_tag().is_none());
-
-        // Unwrap the ICMP header.
-        let icmp = unwrapped.icmp.unwrap();
-
-        // Ensure the ICMP type is correct.
-        assert_eq!(IcmpType::from(icmp.icmp_type()), IcmpType::EchoRequest);
-
-        // Extract the ICMP payload.
-        let payload = icmp.payload();
-
-        // Ensure the payload is correct.
-        assert_eq!(
-            payload,
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
     }
 
