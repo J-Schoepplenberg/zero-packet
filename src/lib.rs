@@ -7,13 +7,18 @@
 
     Use `zero-packet` if you are working with raw sockets.
 
-    Supported protocols:
-    - Ethernet
+    ## Supported protocols
+
+    - Ethernet II
+        - VLAN tagging
+        - Double tagging
     - ARP
     - IPv4
+    - IPv6
+    - ICMPv4
+    - ICMPv6
     - TCP
     - UDP
-    - ICMP
 
     ## Getting started
 
@@ -27,7 +32,7 @@
 
     ```toml
     [dependencies]
-    zero-packet = "0.0.6"
+    zero-packet = "0.0.7"
     ```
 
     ## PacketBuilder
@@ -93,6 +98,9 @@
 
 // Disables the standard library.
 #![no_std]
+
+// Statically guarantees that the code cannot be unsafe.
+#![forbid(unsafe_code)]
 
 pub mod datalink;
 pub mod misc;

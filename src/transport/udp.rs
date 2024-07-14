@@ -1,4 +1,4 @@
-use crate::network::checksum::{internet_checksum, pseudo_header};
+use crate::network::checksum::internet_checksum;
 use core::fmt;
 
 /// The length of a UDP header in bytes.
@@ -26,6 +26,12 @@ impl<'a> UdpWriter<'a> {
         UDP_HEADER_LENGTH
     }
 
+    /// Returns the total length of the packet in bytes.
+    #[inline]
+    pub fn packet_len(&self) -> usize {
+        self.bytes.len()
+    }
+
     /// Sets the source port field.
     #[inline]
     pub fn set_src_port(&mut self, src_port: u16) {
@@ -41,7 +47,7 @@ impl<'a> UdpWriter<'a> {
     }
 
     /// Sets the length field.
-    /// 
+    ///
     /// Should include the entire packet (header and payload).
     #[inline]
     pub fn set_length(&mut self, length: u16) {
@@ -51,16 +57,15 @@ impl<'a> UdpWriter<'a> {
 
     /// Calculates the checksum field for error checking.
     ///
-    /// Consists of the IP pseudo-header, UDP header and payload.
+    /// Includes the UDP header, payload and IPv4 pseudo header.
     ///
     /// Checksum is optional in UDP for IPv4, but mandatory for IPv6.
     /// Although, it is strongly recommended to use checksums for both. See: RFC 1122.
     #[inline]
-    pub fn set_checksum(&mut self, src_ip: &[u8; 4], dest_ip: &[u8; 4]) {
+    pub fn set_checksum(&mut self, pseudo_sum: u32) {
         self.bytes[6] = 0;
         self.bytes[7] = 0;
-        let pseudo_header = pseudo_header(src_ip, dest_ip, 17, self.bytes.len());
-        let checksum = internet_checksum(self.bytes, pseudo_header);
+        let checksum = internet_checksum(self.bytes, pseudo_sum);
         self.bytes[6] = (checksum >> 8) as u8;
         self.bytes[7] = (checksum & 0xff) as u8;
     }
@@ -95,8 +100,14 @@ impl<'a> UdpReader<'a> {
         ((self.bytes[2] as u16) << 8) | (self.bytes[3] as u16)
     }
 
+    /// Returns the checksum field.
+    #[inline]
+    pub fn checksum(&self) -> u16 {
+        ((self.bytes[6] as u16) << 8) | (self.bytes[7] as u16)
+    }
+
     /// Returns the length field.
-    /// 
+    ///
     /// Includes the entire packet (header and payload).
     #[inline]
     pub fn length(&self) -> u16 {
@@ -135,6 +146,7 @@ impl fmt::Debug for UdpReader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::checksum::ipv4_pseudo_header;
 
     #[test]
     fn test_getters_and_setters() {
@@ -155,7 +167,10 @@ mod tests {
         writer.set_src_port(src_port);
         writer.set_dest_port(dst_port);
         writer.set_length(length);
-        writer.set_checksum(&src_ip, &dest_ip);
+
+        // Calculate the checksum.
+        let pseudo_sum = ipv4_pseudo_header(&src_ip, &dest_ip, 17, writer.packet_len());
+        writer.set_checksum(pseudo_sum);
 
         // Create a UDP packet reader.
         let reader = UdpReader::new(&bytes).unwrap();

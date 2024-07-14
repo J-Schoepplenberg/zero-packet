@@ -2,21 +2,21 @@ use super::checksum::internet_checksum;
 use core::fmt;
 
 /// The length of an ICMP header in bytes.
-pub const ICMP_HEADER_LENGTH: usize = 8;
+pub const ICMPV4_HEADER_LENGTH: usize = 8;
 
 /// The maximum valid ICMP type.
-pub const ICMP_MAX_VALID_CODE: u8 = 15;
+pub const ICMPV4_MAX_VALID_CODE: u8 = 15;
 
-/// Writes ICMP header fields.
-pub struct IcmpWriter<'a> {
+/// Writes ICMPv4 header fields.
+pub struct Icmpv4Writer<'a> {
     pub bytes: &'a mut [u8],
 }
 
-impl<'a> IcmpWriter<'a> {
-    /// Creates a new `IcmpWriter` from the given slice.
+impl<'a> Icmpv4Writer<'a> {
+    /// Creates a new `Icmpv4Writer` from the given slice.
     #[inline]
     pub fn new(bytes: &'a mut [u8]) -> Result<Self, &'static str> {
-        if bytes.len() < ICMP_HEADER_LENGTH {
+        if bytes.len() < ICMPV4_HEADER_LENGTH {
             return Err("Slice is too short to contain an ICMP header.");
         }
 
@@ -26,7 +26,7 @@ impl<'a> IcmpWriter<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_len(&self) -> usize {
-        ICMP_HEADER_LENGTH
+        ICMPV4_HEADER_LENGTH
     }
 
     /// Returns the identifier field.
@@ -41,9 +41,9 @@ impl<'a> IcmpWriter<'a> {
         self.bytes[1] = code;
     }
 
-    /// Calculates the internet checksum (RFC 1071) for error checking.
+    /// Calculates the internet checksum for error checking.
     ///
-    /// Includes the ICMP header and payload.
+    /// Includes the ICMPv4 header and payload.
     #[inline]
     pub fn set_checksum(&mut self) {
         self.bytes[2] = 0;
@@ -54,17 +54,17 @@ impl<'a> IcmpWriter<'a> {
     }
 }
 
-/// Reads an ICMP header.
+/// Reads an ICMPv4 header.
 #[derive(PartialEq)]
-pub struct IcmpReader<'a> {
+pub struct Icmpv4Reader<'a> {
     pub bytes: &'a [u8],
 }
 
-impl<'a> IcmpReader<'a> {
-    /// Creates a new `IcmpReader` from the given slice.
+impl<'a> Icmpv4Reader<'a> {
+    /// Creates a new `Icmpv4Reader` from the given slice.
     #[inline]
     pub fn new(bytes: &'a [u8]) -> Result<Self, &'static str> {
-        if bytes.len() < ICMP_HEADER_LENGTH {
+        if bytes.len() < ICMPV4_HEADER_LENGTH {
             return Err("Slice is too short to contain an ICMP header.");
         }
 
@@ -92,23 +92,25 @@ impl<'a> IcmpReader<'a> {
     /// Returns the header length in bytes.
     #[inline]
     pub fn header_len(&self) -> usize {
-        ICMP_HEADER_LENGTH
+        ICMPV4_HEADER_LENGTH
     }
 
+    /// Returns a reference to the header.
     #[inline]
     pub fn header(&self) -> &'a [u8] {
-        &self.bytes[..ICMP_HEADER_LENGTH]
+        &self.bytes[..ICMPV4_HEADER_LENGTH]
     }
 
+    /// Returns a reference to the payload.
     #[inline]
     pub fn payload(&self) -> &'a [u8] {
-        &self.bytes[ICMP_HEADER_LENGTH..]
+        &self.bytes[ICMPV4_HEADER_LENGTH..]
     }
 }
 
-impl fmt::Debug for IcmpReader<'_> {
+impl fmt::Debug for Icmpv4Reader<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IcmpPacket")
+        f.debug_struct("Icmpv4Packet")
             .field("type", &self.icmp_type())
             .field("code", &self.icmp_code())
             .field("checksum", &self.checksum())
@@ -123,14 +125,14 @@ mod tests {
     #[test]
     fn test_getters_and_setters() {
         // Raw packet.
-        let mut bytes = [0u8; 8];
+        let mut bytes = [0u8; ICMPV4_HEADER_LENGTH];
 
         // Random values.
         let icmp_type = 8;
         let code = 0;
 
-        // Create a ICMP writer.
-        let mut writer = IcmpWriter::new(&mut bytes).unwrap();
+        // Create a ICMPv4 writer.
+        let mut writer = Icmpv4Writer::new(&mut bytes).unwrap();
 
         // Set the values.
         writer.set_icmp_type(icmp_type);
@@ -138,7 +140,7 @@ mod tests {
         writer.set_checksum();
 
         // Create a ICMP reader.
-        let reader = IcmpReader::new(&bytes).unwrap();
+        let reader = Icmpv4Reader::new(&bytes).unwrap();
 
         // Check the values.
         assert_eq!(reader.icmp_type(), icmp_type);

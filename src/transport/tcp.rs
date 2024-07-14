@@ -1,4 +1,4 @@
-use crate::network::checksum::{internet_checksum, pseudo_header};
+use crate::network::checksum::internet_checksum;
 use core::fmt;
 
 /// The minimum length of a TCP header in bytes.
@@ -24,6 +24,12 @@ impl<'a> TcpWriter<'a> {
     #[inline]
     pub fn header_len(&self) -> usize {
         (self.bytes[12] >> 4) as usize * 4
+    }
+
+    /// Returns the total length of the packet in bytes.
+    #[inline]
+    pub fn packet_len(&self) -> usize {
+        self.bytes.len()
     }
 
     /// Sets the source port field.
@@ -92,18 +98,16 @@ impl<'a> TcpWriter<'a> {
 
     /// Calculates the checksum field for error checking.
     ///
-    /// Consists of the IP pseudo-header, TCP header and payload.
+    /// Includes the TCP header, payload and IPv4 pseudo header.
     #[inline]
-    pub fn set_checksum(&mut self, src_ip: &[u8; 4], dest_ip: &[u8; 4]) {
+    pub fn set_checksum(&mut self, pseudo_sum: u32) {
         self.bytes[16] = 0;
         self.bytes[17] = 0;
-        let pseudo_header = pseudo_header(src_ip, dest_ip, 6, self.bytes.len());
-        let checksum = internet_checksum(self.bytes, pseudo_header);
+        let checksum = internet_checksum(self.bytes, pseudo_sum);
         self.bytes[16] = (checksum >> 8) as u8;
         self.bytes[17] = (checksum & 0xff) as u8;
     }
 }
-
 
 /// Reads TCP header fields.
 #[derive(PartialEq)]
@@ -115,7 +119,7 @@ impl<'a> TcpReader<'a> {
     /// Creates a new `TcpReader` from the given slice.
     #[inline]
     pub fn new(bytes: &'a [u8]) -> Result<Self, &'static str> {
-        if bytes.len() < TCP_MIN_HEADER_LENGTH{
+        if bytes.len() < TCP_MIN_HEADER_LENGTH {
             return Err("Slice is too short to contain a TCP header.");
         }
 
@@ -227,6 +231,7 @@ impl<'a> fmt::Debug for TcpReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::checksum::ipv4_pseudo_header;
 
     #[test]
     fn test_getters_and_setters() {
@@ -259,7 +264,10 @@ mod tests {
         writer.set_flags(flags);
         writer.set_window_size(window_size);
         writer.set_urgent_pointer(urgent_pointer);
-        writer.set_checksum(&src_ip, &dest_ip);
+
+        // Set the checksum including the pseudo header.
+        let pseudo_sum = ipv4_pseudo_header(&src_ip, &dest_ip, 6, writer.packet_len());
+        writer.set_checksum(pseudo_sum);
 
         // Create a TCP packet reader.
         let reader = TcpReader::new(&bytes).unwrap();

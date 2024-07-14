@@ -10,20 +10,22 @@ No async, no allocations, no dependencies, no macros, no std, no unsafe. It simp
 
 Use `zero-packet` if you are working with raw sockets.
 
-Supported protocols and headers:
+## Supported protocols
 
 - Ethernet II
-    - VLAN tagging (IEEE 802.1Q)
-    - Double tagging (IEEE 802.1ad)
+    - VLAN tagging
+    - Double tagging
 - ARP
 - IPv4
+- IPv6
+- ICMPv4
+- ICMPv6
 - TCP
 - UDP
-- ICMP
 
 ## Usage
 
-## Getting started
+### Getting started
 
 Install via your command line:
 
@@ -35,7 +37,7 @@ Or add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zero-packet = "0.0.6"
+zero-packet = "0.0.7"
 ```
 
 ### PacketBuilder
@@ -105,7 +107,6 @@ if let Some(tcp) = TcpReader::new(&packet)? {
 
 Upcoming features:
 
-- [ ] IPv6
-- [ ] ICMPv6
+- [ ] IPv6 Extension Headers
 - [ ] IPsec
 - [ ] ...

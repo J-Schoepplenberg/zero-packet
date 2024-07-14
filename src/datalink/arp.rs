@@ -1,4 +1,4 @@
-use crate::misc::{to_hex_string, IpFormatter};
+use crate::misc::{bytes_to_mac, IpFormatter};
 use core::{fmt, str::from_utf8};
 
 /// The length of an ARP header in bytes.
@@ -231,10 +231,10 @@ impl fmt::Debug for ArpReader<'_> {
         let sender_ip = self.spa();
         let target_ip = self.tpa();
         let mut sha_buf = [0u8; 18];
-        let sha_len = to_hex_string(self.sha(), &mut sha_buf);
+        let sha_len = bytes_to_mac(self.sha(), &mut sha_buf);
         let sha_hex = from_utf8(&sha_buf[..sha_len]).unwrap();
         let mut tha_buf = [0u8; 18];
-        let tha_len = to_hex_string(self.tha(), &mut tha_buf);
+        let tha_len = bytes_to_mac(self.tha(), &mut tha_buf);
         let tha_hex = from_utf8(&tha_buf[..tha_len]).unwrap();
         f.debug_struct("Arp")
             .field("hardware_type", &self.htype())

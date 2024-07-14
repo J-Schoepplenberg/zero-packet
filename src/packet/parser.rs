@@ -3,11 +3,13 @@ use crate::{
         arp::ArpReader,
         ethernet::{EthernetReader, ETHERNET_MIN_FRAME_LENGTH},
     },
-    misc::{EtherType, IcmpType, IpProtocol},
+    misc::{EtherType, Icmpv4Type, Icmpv6Type, IpProtocol},
     network::{
-        checksum::{pseudo_header, verify_internet_checksum},
-        icmp::{IcmpReader, ICMP_MAX_VALID_CODE},
+        checksum::{ipv4_pseudo_header, ipv6_pseudo_header, verify_internet_checksum},
+        icmpv4::{Icmpv4Reader, ICMPV4_MAX_VALID_CODE},
+        icmpv6::Icmpv6Reader,
         ipv4::{IPv4Reader, IPV4_MIN_HEADER_LENGTH},
+        ipv6::IPv6Reader,
     },
     transport::{
         tcp::{TcpReader, TCP_MIN_HEADER_LENGTH},
@@ -21,9 +23,11 @@ pub struct PacketParser<'a> {
     pub ethernet: Option<EthernetReader<'a>>,
     pub arp: Option<ArpReader<'a>>,
     pub ipv4: Option<IPv4Reader<'a>>,
+    pub ipv6: Option<IPv6Reader<'a>>,
     pub tcp: Option<TcpReader<'a>>,
     pub udp: Option<UdpReader<'a>>,
-    pub icmp: Option<IcmpReader<'a>>,
+    pub icmpv4: Option<Icmpv4Reader<'a>>,
+    pub icmpv6: Option<Icmpv6Reader<'a>>,
 }
 
 impl<'a> PacketParser<'a> {
@@ -43,15 +47,17 @@ impl<'a> PacketParser<'a> {
             arp: None,
             ethernet: Some(reader),
             ipv4: None,
+            ipv6: None,
             tcp: None,
             udp: None,
-            icmp: None,
+            icmpv4: None,
+            icmpv6: None,
         };
 
         match EtherType::from(ethertype) {
-            EtherType::ARP => parser.parse_arp(&bytes[header_len..])?,
-            EtherType::IPv4 => parser.parse_ipv4(&bytes[header_len..])?,
-            EtherType::IPv6 => todo!("IPv6 not supported yet."),
+            EtherType::Arp => parser.parse_arp(&bytes[header_len..])?,
+            EtherType::Ipv4 => parser.parse_ipv4(&bytes[header_len..])?,
+            EtherType::Ipv6 => parser.parse_ipv6(&bytes[header_len..])?,
             EtherType::Unknown(_) => return Err("Unknown or unsupported EtherType"),
         }
 
@@ -107,29 +113,34 @@ impl<'a> PacketParser<'a> {
         self.ipv4 = Some(reader);
 
         match IpProtocol::from(protocol) {
-            IpProtocol::ICMP => self.parse_icmp(&bytes[header_len..])?,
-            IpProtocol::TCP => self.parse_tcp(&bytes[header_len..])?,
-            IpProtocol::UDP => self.parse_udp(&bytes[header_len..])?,
-            IpProtocol::Unknown(_) => return Err("Unknown IPv4 Protocol."),
+            IpProtocol::Tcp => self.parse_tcp(&bytes[header_len..])?,
+            IpProtocol::Udp => self.parse_udp(&bytes[header_len..])?,
+            IpProtocol::Icmpv4 => self.parse_icmpv4(&bytes[header_len..])?,
+            _ => return Err("Unknown IPv4 Protocol."),
         }
 
         Ok(())
     }
 
-    /// Parses a ICMP header.
     #[inline]
-    pub fn parse_icmp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
-        let reader = IcmpReader::new(bytes)?;
+    pub fn parse_ipv6(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = IPv6Reader::new(bytes)?;
 
-        if IcmpType::from(reader.icmp_type()) == IcmpType::Unknown {
-            return Err("ICMP type field is invalid.");
+        if reader.version() != 6 {
+            return Err("IPv6 version field is invalid. Expected version 6.");
         }
 
-        if reader.icmp_code() > ICMP_MAX_VALID_CODE {
-            return Err("ICMP code field is invalid.");
-        }
+        let header_len = reader.header_len();
+        let protocol = reader.next_header();
 
-        self.icmp = Some(reader);
+        self.ipv6 = Some(reader);
+
+        match IpProtocol::from(protocol) {
+            IpProtocol::Tcp => self.parse_tcp(&bytes[header_len..])?,
+            IpProtocol::Udp => self.parse_udp(&bytes[header_len..])?,
+            IpProtocol::Icmpv6 => self.parse_icmpv6(&bytes[header_len..])?,
+            _ => return Err("Unknown IPv6 Protocol."),
+        }
 
         Ok(())
     }
@@ -170,25 +181,51 @@ impl<'a> PacketParser<'a> {
         Ok(())
     }
 
+    /// Parses an ICMPv4 header.
+    #[inline]
+    pub fn parse_icmpv4(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = Icmpv4Reader::new(bytes)?;
+
+        if Icmpv4Type::from(reader.icmp_type()) == Icmpv4Type::Unknown {
+            return Err("ICMPv4 type field is invalid.");
+        }
+
+        if reader.icmp_code() > ICMPV4_MAX_VALID_CODE {
+            return Err("ICMPv4 code field is invalid.");
+        }
+
+        self.icmpv4 = Some(reader);
+
+        Ok(())
+    }
+
+    /// Parses an ICMPv6 header.
+    #[inline]
+    pub fn parse_icmpv6(&mut self, _bytes: &'a [u8]) -> Result<(), &'static str> {
+        let reader = Icmpv6Reader::new(_bytes)?;
+
+        if Icmpv6Type::from(reader.icmp_type()) == Icmpv6Type::Unknown {
+            return Err("ICMPv6 type field is invalid.");
+        }
+
+        self.icmpv6 = Some(reader);
+
+        Ok(())
+    }
+
     /// Verifies the checksums of encapsulated headers.
     #[inline]
     pub fn verify_checksums(&self) -> Result<(), &'static str> {
-        let pseudo = self
-            .ipv4
-            .as_ref()
-            .map(|ipv4| {
-                if !verify_internet_checksum(ipv4.header(), 0) {
-                    return Err("IPv4 checksum is invalid.");
-                }
-                Ok((ipv4.src_ip(), ipv4.dest_ip(), ipv4.protocol()))
-            })
-            .transpose()?;
-
-        if let Some(icmp) = &self.icmp {
-            if !verify_internet_checksum(icmp.bytes, 0) {
-                return Err("ICMP checksum is invalid.");
+        let pseudo = if let Some(ipv4) = &self.ipv4 {
+            if !verify_internet_checksum(ipv4.header(), 0) {
+                return Err("IPv4 checksum is invalid.");
             }
-        }
+            Some((ipv4.src_ip(), ipv4.dest_ip(), ipv4.protocol()))
+        } else if let Some(ipv6) = &self.ipv6 {
+            Some((ipv6.src_addr(), ipv6.dest_addr(), ipv6.next_header()))
+        } else {
+            None
+        };
 
         if let Some(tcp) = &self.tcp {
             Self::verify_transport_checksum(tcp.bytes, pseudo)?;
@@ -196,6 +233,16 @@ impl<'a> PacketParser<'a> {
 
         if let Some(udp) = &self.udp {
             Self::verify_transport_checksum(udp.bytes, pseudo)?;
+        }
+
+        if let Some(icmpv4) = &self.icmpv4 {
+            if !verify_internet_checksum(icmpv4.bytes, 0) {
+                return Err("ICMPv4 checksum is invalid.");
+            }
+        }
+
+        if let Some(icmpv6) = &self.icmpv6 {
+            Self::verify_transport_checksum(icmpv6.bytes, pseudo)?;
         }
 
         Ok(())
@@ -209,22 +256,34 @@ impl<'a> PacketParser<'a> {
         bytes: &[u8],
         pseudo: Option<(&[u8], &[u8], u8)>,
     ) -> Result<(), &'static str> {
-        let (src_ip, dest_ip, protocol) =
+        let (src, dest, protocol) =
             pseudo.ok_or("Checksum cannot be verified without a pseudo header.")?;
 
-        let sip = src_ip.try_into().unwrap();
-        let dip = dest_ip.try_into().unwrap();
-
-        let pseudo_sum = pseudo_header(sip, dip, protocol, bytes.len());
+        let pseudo_sum = match src.len() {
+            4 => ipv4_pseudo_header(
+                src.try_into().unwrap(),  // won't panic
+                dest.try_into().unwrap(), // won't panic
+                protocol,
+                bytes.len(),
+            ),
+            16 => ipv6_pseudo_header(
+                src.try_into().unwrap(),  // won't panic
+                dest.try_into().unwrap(), // won't panic
+                protocol,
+                bytes.len(),
+            ),
+            _ => return Err("Unsupported IP address length for pseudo header."),
+        };
 
         if !verify_internet_checksum(bytes, pseudo_sum) {
             return Err(match IpProtocol::from(protocol) {
-                IpProtocol::TCP => "TCP checksum is invalid.",
-                IpProtocol::UDP => "UDP checksum is invalid.",
+                IpProtocol::Tcp => "TCP checksum is invalid.",
+                IpProtocol::Udp => "UDP checksum is invalid.",
+                IpProtocol::Icmpv6 => "ICMPv6 checksum is invalid.",
                 _ => "Unsupported protocol checksum.",
             });
         }
-        
+
         Ok(())
     }
 
@@ -245,6 +304,10 @@ impl<'a> PacketParser<'a> {
             len += ipv4.header_len();
         }
 
+        if let Some(ipv6) = &self.ipv6 {
+            len += ipv6.header_len();
+        }
+
         if let Some(tcp) = &self.tcp {
             len += tcp.header_len();
         }
@@ -253,8 +316,12 @@ impl<'a> PacketParser<'a> {
             len += udp.header_len();
         }
 
-        if let Some(icmp) = &self.icmp {
-            len += icmp.header_len();
+        if let Some(icmpv4) = &self.icmpv4 {
+            len += icmpv4.header_len();
+        }
+
+        if let Some(icmpv6) = &self.icmpv6 {
+            len += icmpv6.header_len();
         }
 
         len
@@ -327,7 +394,7 @@ mod tests {
         assert!(unwrapped.udp.is_some());
 
         // Ensure these headers are not present.
-        assert!(unwrapped.icmp.is_none());
+        assert!(unwrapped.icmpv4.is_none());
         assert!(unwrapped.arp.is_none());
         assert!(unwrapped.tcp.is_none());
 
@@ -388,7 +455,7 @@ mod tests {
         assert!(unwrapped.udp.is_some());
 
         // Ensure these headers are not present.
-        assert!(unwrapped.icmp.is_none());
+        assert!(unwrapped.icmpv4.is_none());
         assert!(unwrapped.arp.is_none());
         assert!(unwrapped.tcp.is_none());
 
@@ -410,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn test_guess_icmp_echo_response() {
+    fn test_icmpv4_echo_response() {
         // ICMP echo response (Ethernet + IPv4 + ICMP).
         let packet = [
             0x08, 0x00, 0x20, 0x86, 0x35, 0x4b, 0x00, 0xe0, 0xf7, 0x26, 0x3f, 0xe9, 0x08, 0x00,
@@ -434,7 +501,7 @@ mod tests {
         // Ensure the parser has the expected fields.
         assert!(unwrapped.ethernet.is_some());
         assert!(unwrapped.ipv4.is_some());
-        assert!(unwrapped.icmp.is_some());
+        assert!(unwrapped.icmpv4.is_some());
         assert!(unwrapped.arp.is_none());
         assert!(unwrapped.tcp.is_none());
         assert!(unwrapped.udp.is_none());
@@ -442,14 +509,59 @@ mod tests {
         // Unwrap headers.
         let ethernet = unwrapped.ethernet.unwrap();
         let ipv4 = unwrapped.ipv4.unwrap();
-        let icmp = unwrapped.icmp.unwrap();
+        let icmpv4 = unwrapped.icmpv4.unwrap();
 
         // Ensure the fields are correct.
         assert_eq!(ethernet.ethertype(), 0x0800);
         assert_eq!(ipv4.protocol(), 1);
         assert_eq!(ipv4.checksum(), 0xfa30);
-        assert_eq!(icmp.icmp_type(), 0);
-        assert_eq!(icmp.icmp_code(), 0);
-        assert_eq!(icmp.checksum(), 0x45da);
+        assert_eq!(icmpv4.icmp_type(), 0);
+        assert_eq!(icmpv4.icmp_code(), 0);
+        assert_eq!(icmpv4.checksum(), 0x45da);
+    }
+
+    #[test]
+    fn test_ipv6_icmpv6() {
+        // ICMPv6 packet (Ethernet + IPv6 + ICMPv6).
+        let packet = [
+            0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
+            0x60, 0x00, 0x00, 0x00, 0x00, 0x20, 0x3a, 0xff, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x02, 0x00, 0x86, 0xff, 0xfe, 0x05, 0x80, 0xda, 0xfe, 0x80, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x02, 0x60, 0x97, 0xff, 0xfe, 0x07, 0x69, 0xea, 0x87, 0x00,
+            0x68, 0xbd, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x02, 0x60, 0x97, 0xff, 0xfe, 0x07, 0x69, 0xea, 0x01, 0x01, 0x00, 0x00, 0x86, 0x05,
+            0x80, 0xda,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected fields.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+        assert!(unwrapped.icmpv6.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmpv4.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.tcp.is_none());
+        assert!(unwrapped.udp.is_none());
+
+        // Unwrap headers.
+        let ethernet = unwrapped.ethernet.unwrap();
+        let ipv6 = unwrapped.ipv6.unwrap();
+        let icmpv6 = unwrapped.icmpv6.unwrap();
+
+        // Ensure the fields are correct.
+        assert_eq!(ethernet.ethertype(), 34525);
+        assert_eq!(ipv6.next_header(), 58);
+        assert_eq!(icmpv6.icmp_type(), 135);
+        assert_eq!(icmpv6.icmp_code(), 0);
     }
 }

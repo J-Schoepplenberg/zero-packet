@@ -1,4 +1,4 @@
-use crate::misc::to_hex_string;
+use crate::misc::bytes_to_mac;
 use core::{fmt, str::from_utf8};
 
 /// The minimum length of an Ethernet frame header in bytes.
@@ -75,9 +75,9 @@ impl<'a> EthernetWriter<'a> {
     }
 
     /// Sets a VLAN tag.
-    /// 
+    ///
     /// Optionally present in the Ethernet frame header.
-    /// 
+    ///
     /// Increases the header length by VLAN_TAG_LENGTH.
     #[inline]
     pub fn set_vlan_tag(&mut self, tpid: u16, tci: u16) -> Result<(), &'static str> {
@@ -96,9 +96,9 @@ impl<'a> EthernetWriter<'a> {
     }
 
     /// Sets a double VLAN tag (Q-in-Q).
-    /// 
+    ///
     /// Optionally present in the Ethernet frame header.
-    /// 
+    ///
     /// Increases the header length by 2 * VLAN_TAG_LENGTH.
     #[inline]
     pub fn set_double_vlan_tag(
@@ -220,7 +220,7 @@ impl<'a> EthernetReader<'a> {
     }
 
     /// Returns the VLAN tag.
-    /// 
+    ///
     /// Optionally present in the Ethernet frame header.
     #[inline]
     pub fn vlan_tag(&self) -> Option<(u16, u16)> {
@@ -235,7 +235,7 @@ impl<'a> EthernetReader<'a> {
     }
 
     /// Returns the double VLAN tag (Q-in-Q).
-    /// 
+    ///
     /// Optionally present in the Ethernet frame header.
     #[inline]
     pub fn double_vlan_tag(&self) -> Option<((u16, u16), (u16, u16))> {
@@ -273,10 +273,10 @@ impl<'a> EthernetReader<'a> {
 impl<'a> fmt::Debug for EthernetReader<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d_buf = [0u8; 18];
-        let d_len = to_hex_string(self.dest_mac(), &mut d_buf);
+        let d_len = bytes_to_mac(self.dest_mac(), &mut d_buf);
         let d_hex = from_utf8(&d_buf[..d_len]).unwrap();
         let mut s_buf = [0u8; 18];
-        let s_len = to_hex_string(self.src_mac(), &mut s_buf);
+        let s_len = bytes_to_mac(self.src_mac(), &mut s_buf);
         let s_hex = from_utf8(&s_buf[..s_len]).unwrap();
         f.debug_struct("EthernetFrame")
             .field("dest_mac", &d_hex)

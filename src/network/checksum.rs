@@ -28,11 +28,9 @@ pub fn internet_checksum(data: &[u8], accumulator: u32) -> u16 {
     !sum as u16
 }
 
-/// Sums up the IP pseudo header for the checksum of TCP and UDP.
-///
-/// These fields are not actually part of the TCP or UDP header.
+/// Sums up the IP pseudo header for the checksum calculation.
 #[inline]
-pub fn pseudo_header(src_ip: &[u8; 4], dest_ip: &[u8; 4], protocol: u8, length: usize) -> u32 {
+pub fn ipv4_pseudo_header(src_ip: &[u8; 4], dest_ip: &[u8; 4], protocol: u8, length: usize) -> u32 {
     let mut pseudo_header = 0u32;
 
     pseudo_header += u32::from(src_ip[0]) << 8 | u32::from(src_ip[1]);
@@ -45,9 +43,39 @@ pub fn pseudo_header(src_ip: &[u8; 4], dest_ip: &[u8; 4], protocol: u8, length: 
     pseudo_header
 }
 
+/// Sums up the IP pseudo header for the checksum calculation.
+#[inline]
+pub fn ipv6_pseudo_header(
+    src_addr: &[u8; 16],
+    dest_addr: &[u8; 16],
+    protocol: u8,
+    length: usize,
+) -> u32 {
+    let mut pseudo_header = 0u32;
+
+    pseudo_header += u32::from(src_addr[0]) << 8 | u32::from(src_addr[1]);
+    pseudo_header += u32::from(src_addr[2]) << 8 | u32::from(src_addr[3]);
+    pseudo_header += u32::from(src_addr[4]) << 8 | u32::from(src_addr[5]);
+    pseudo_header += u32::from(src_addr[6]) << 8 | u32::from(src_addr[7]);
+    pseudo_header += u32::from(src_addr[8]) << 8 | u32::from(src_addr[9]);
+    pseudo_header += u32::from(src_addr[10]) << 8 | u32::from(src_addr[11]);
+    pseudo_header += u32::from(src_addr[12]) << 8 | u32::from(src_addr[13]);
+    pseudo_header += u32::from(src_addr[14]) << 8 | u32::from(src_addr[15]);
+    pseudo_header += u32::from(dest_addr[0]) << 8 | u32::from(dest_addr[1]);
+    pseudo_header += u32::from(dest_addr[2]) << 8 | u32::from(dest_addr[3]);
+    pseudo_header += u32::from(dest_addr[4]) << 8 | u32::from(dest_addr[5]);
+    pseudo_header += u32::from(dest_addr[6]) << 8 | u32::from(dest_addr[7]);
+    pseudo_header += u32::from(dest_addr[8]) << 8 | u32::from(dest_addr[9]);
+    pseudo_header += u32::from(dest_addr[10]) << 8 | u32::from(dest_addr[11]);
+    pseudo_header += u32::from(dest_addr[12]) << 8 | u32::from(dest_addr[13]);
+    pseudo_header += u32::from(dest_addr[14]) << 8 | u32::from(dest_addr[15]);
+    pseudo_header += length as u32;
+    pseudo_header += u32::from(protocol);
+
+    pseudo_header
+}
+
 /// Verifies the checksum field.
-///
-/// No error should yield 0000.
 #[inline]
 pub fn verify_internet_checksum(data: &[u8], accumulator: u32) -> bool {
     internet_checksum(data, accumulator) == 0

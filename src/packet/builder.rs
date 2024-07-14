@@ -6,11 +6,17 @@ use crate::{
             VLAN_TAG_LENGTH,
         },
     },
-    network::{icmp::IcmpWriter, ipv4::IPv4Writer},
+    network::{
+        checksum::{ipv4_pseudo_header, ipv6_pseudo_header},
+        icmpv4::Icmpv4Writer,
+        icmpv6::Icmpv6Writer,
+        ipv4::IPv4Writer,
+        ipv6::IPv6Writer,
+    },
     transport::{tcp::TcpWriter, udp::UdpWriter},
 };
 
-// PacketBuilder State Machine:
+// State Machine:
 //
 //   Raw
 //    |
@@ -18,16 +24,18 @@ use crate::{
 // EthernetHeader
 //    |       \
 //    |        v
-//    |     ArpHeader
+//    |    ArpHeader
 //    |
-//    v
-// Ipv4Header
-//    |     \         \           \
-//    |      v         v           v
-//    |   TcpHeader  UdpHeader  IcmpHeader
-//    |      |         |           |
-//    |      v         v           v
-//    +-----------> Payload <------+
+//    | +-------------------------> Ipv6Header
+//    |                            /        / \
+//    v                           /        /   \
+// Ipv4Header +------------------/----+   /     \
+//    |           \           \ /      \ /       \
+//    |            v           v        v         v
+//    |      Icmpv4Header TcpHeader UdpHeader Icmpv6Header
+//    |            |           |        |         |
+//    |            v           v        v         v
+//    +-------------------------> Payload < ------+
 
 /// Zero-sized struct representing the `Raw` state of the `PacketBuilder` state machine.
 pub struct RawState;
@@ -41,14 +49,20 @@ pub struct ArpHeaderState;
 /// Zero-sized struct representing the `Ipv4Header` state of the `PacketBuilder` state machine.
 pub struct Ipv4HeaderState;
 
+/// Zero-sized struct representing the `Ipv6Header` state of the `PacketBuilder` state machine.
+pub struct Ipv6HeaderState;
+
 /// Zero-sized struct representing the `TcpHeader` state of the `PacketBuilder` state machine.
 pub struct TcpHeaderState;
 
 /// Zero-sized struct representing the `UdpHeader` state of the `PacketBuilder` state machine.
 pub struct UdpHeaderState;
 
-/// Zero-sized struct representing the `IcmpHeader` state of the `PacketBuilder` state machine.
-pub struct IcmpHeaderState;
+/// Zero-sized struct representing the `Icmpv4Header` state of the `PacketBuilder` state machine.
+pub struct Icmpv4HeaderState;
+
+/// Zero-sized struct representing the `Icmpv6Header` state of the `PacketBuilder` state machine.
+pub struct Icmpv6HeaderState;
 
 /// Zero-sized struct representing the `Payload` state of the `PacketBuilder` state machine.
 pub struct PayloadState;
@@ -118,11 +132,11 @@ impl<'a> PacketBuilder<'a, RawState> {
         dest_mac: &[u8; 6],
         ethertype: u16,
     ) -> Result<PacketBuilder<'a, EthernetHeaderState>, &'static str> {
-        let mut ethernet_frame = EthernetWriter::new(self.bytes)?;
+        let mut writer = EthernetWriter::new(self.bytes)?;
 
-        ethernet_frame.set_src_mac(src_mac);
-        ethernet_frame.set_dest_mac(dest_mac);
-        ethernet_frame.set_ethertype(ethertype);
+        writer.set_src_mac(src_mac);
+        writer.set_dest_mac(dest_mac);
+        writer.set_ethertype(ethertype);
 
         self.header_len = ETHERNET_MIN_HEADER_LENGTH;
 
@@ -143,12 +157,12 @@ impl<'a> PacketBuilder<'a, RawState> {
         ethertype: u16,
         tci: u16,
     ) -> Result<PacketBuilder<'a, EthernetHeaderState>, &'static str> {
-        let mut ethernet_frame = EthernetWriter::new(self.bytes)?;
+        let mut writer = EthernetWriter::new(self.bytes)?;
 
-        ethernet_frame.set_src_mac(src_mac);
-        ethernet_frame.set_dest_mac(dest_mac);
-        ethernet_frame.set_vlan_tag(ETHERTYPE_VLAN, tci)?;
-        ethernet_frame.set_ethertype(ethertype);
+        writer.set_src_mac(src_mac);
+        writer.set_dest_mac(dest_mac);
+        writer.set_vlan_tag(ETHERTYPE_VLAN, tci)?;
+        writer.set_ethertype(ethertype);
 
         self.header_len = ETHERNET_MIN_HEADER_LENGTH + VLAN_TAG_LENGTH;
 
@@ -170,12 +184,12 @@ impl<'a> PacketBuilder<'a, RawState> {
         tci1: u16,
         tci2: u16,
     ) -> Result<PacketBuilder<'a, EthernetHeaderState>, &'static str> {
-        let mut ethernet_frame = EthernetWriter::new(self.bytes)?;
+        let mut writer = EthernetWriter::new(self.bytes)?;
 
-        ethernet_frame.set_src_mac(src_mac);
-        ethernet_frame.set_dest_mac(dest_mac);
-        ethernet_frame.set_double_vlan_tag(ETHERTYPE_QINQ, tci1, ETHERTYPE_VLAN, tci2)?;
-        ethernet_frame.set_ethertype(ethertype);
+        writer.set_src_mac(src_mac);
+        writer.set_dest_mac(dest_mac);
+        writer.set_double_vlan_tag(ETHERTYPE_QINQ, tci1, ETHERTYPE_VLAN, tci2)?;
+        writer.set_ethertype(ethertype);
 
         self.header_len = ETHERNET_MIN_HEADER_LENGTH + 2 * VLAN_TAG_LENGTH;
 
@@ -209,19 +223,19 @@ impl<'a> PacketBuilder<'a, EthernetHeaderState> {
             return Err("Data too short to contain an ARP header.");
         }
 
-        let mut arp_packet = ArpWriter::new(&mut self.bytes[self.header_len..])?;
+        let mut writer = ArpWriter::new(&mut self.bytes[self.header_len..])?;
 
-        arp_packet.set_htype(hardware_type);
-        arp_packet.set_ptype(protocol_type);
-        arp_packet.set_hlen(hardware_address_length);
-        arp_packet.set_plen(protocol_address_length);
-        arp_packet.set_oper(operation);
-        arp_packet.set_sha(src_mac);
-        arp_packet.set_spa(src_ip);
-        arp_packet.set_tha(dest_mac);
-        arp_packet.set_tpa(dest_ip);
+        writer.set_htype(hardware_type);
+        writer.set_ptype(protocol_type);
+        writer.set_hlen(hardware_address_length);
+        writer.set_plen(protocol_address_length);
+        writer.set_oper(operation);
+        writer.set_sha(src_mac);
+        writer.set_spa(src_ip);
+        writer.set_tha(dest_mac);
+        writer.set_tpa(dest_ip);
 
-        self.header_len += arp_packet.header_len();
+        self.header_len += writer.header_len();
 
         Ok(PacketBuilder {
             bytes: self.bytes,
@@ -254,28 +268,67 @@ impl<'a> PacketBuilder<'a, EthernetHeaderState> {
             return Err("Data too short to contain an IPv4 header.");
         }
 
-        let mut ipv4_packet = IPv4Writer::new(&mut self.bytes[self.header_len..])?;
+        let mut writer = IPv4Writer::new(&mut self.bytes[self.header_len..])?;
 
-        ipv4_packet.set_version(version);
-        ipv4_packet.set_ihl(ihl);
-        ipv4_packet.set_dscp(dscp);
-        ipv4_packet.set_ecn(ecn);
-        ipv4_packet.set_total_length(total_length);
-        ipv4_packet.set_id(identification);
-        ipv4_packet.set_flags(flags);
-        ipv4_packet.set_fragment_offset(fragment_offset);
-        ipv4_packet.set_ttl(ttl);
-        ipv4_packet.set_protocol(protocol);
-        ipv4_packet.set_src_ip(src_ip);
-        ipv4_packet.set_dest_ip(dest_ip);
-        ipv4_packet.set_checksum();
+        writer.set_version(version);
+        writer.set_ihl(ihl);
+        writer.set_dscp(dscp);
+        writer.set_ecn(ecn);
+        writer.set_total_length(total_length);
+        writer.set_id(identification);
+        writer.set_flags(flags);
+        writer.set_fragment_offset(fragment_offset);
+        writer.set_ttl(ttl);
+        writer.set_protocol(protocol);
+        writer.set_src_ip(src_ip);
+        writer.set_dest_ip(dest_ip);
+        writer.set_checksum();
 
-        self.header_len += ipv4_packet.header_len();
+        self.header_len += writer.header_len();
 
         Ok(PacketBuilder {
             bytes: self.bytes,
             header_len: self.header_len,
             _state: Ipv4HeaderState,
+        })
+    }
+
+    /// Sets IPv6 header fields.
+    ///
+    /// Transition: EthernetHeader -> Ipv6Header.
+    #[inline]
+    pub fn ipv6(
+        mut self,
+        version: u8,
+        traffic_class: u8,
+        flow_label: u32,
+        payload_length: u16,
+        next_header: u8,
+        hop_limit: u8,
+        src_addr: &[u8; 16],
+        dest_addr: &[u8; 16],
+    ) -> Result<PacketBuilder<'a, Ipv6HeaderState>, &'static str> {
+        if self.bytes.len() < self.header_len {
+            return Err("Data too short to contain an IPv6 header.");
+        }
+
+        let mut writer = IPv6Writer::new(&mut self.bytes[self.header_len..])?;
+
+        writer.set_version(version);
+        writer.set_traffic_class(traffic_class);
+        writer.set_flow_label(flow_label);
+        writer.set_payload_length(payload_length);
+        writer.set_next_header(next_header);
+        writer.set_hop_limit(hop_limit);
+        writer.set_src_addr(src_addr);
+        writer.set_dest_addr(dest_addr);
+
+        self.header_len += writer.header_len();
+
+        Ok(PacketBuilder {
+            bytes: self.bytes,
+            header_len: self.header_len,
+            _state: Ipv6HeaderState,
         })
     }
 }
@@ -304,20 +357,22 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
             return Err("Data too short to contain a TCP segment.");
         }
 
-        let mut tcp_packet = TcpWriter::new(&mut self.bytes[self.header_len..])?;
+        let mut writer = TcpWriter::new(&mut self.bytes[self.header_len..])?;
 
-        tcp_packet.set_src_port(src_port);
-        tcp_packet.set_dest_port(dest_port);
-        tcp_packet.set_sequence_number(sequence_number);
-        tcp_packet.set_ack_number(acknowledgment_number);
-        tcp_packet.set_reserved(reserved);
-        tcp_packet.set_data_offset(data_offset);
-        tcp_packet.set_flags(flags);
-        tcp_packet.set_window_size(window_size);
-        tcp_packet.set_urgent_pointer(urgent_pointer);
-        tcp_packet.set_checksum(src_ip, dest_ip);
+        writer.set_src_port(src_port);
+        writer.set_dest_port(dest_port);
+        writer.set_sequence_number(sequence_number);
+        writer.set_ack_number(acknowledgment_number);
+        writer.set_reserved(reserved);
+        writer.set_data_offset(data_offset);
+        writer.set_flags(flags);
+        writer.set_window_size(window_size);
+        writer.set_urgent_pointer(urgent_pointer);
 
-        self.header_len += tcp_packet.header_len();
+        let pseudo_sum = ipv4_pseudo_header(src_ip, dest_ip, 6, writer.packet_len());
+        writer.set_checksum(pseudo_sum);
+
+        self.header_len += writer.header_len();
 
         Ok(PacketBuilder {
             bytes: self.bytes,
@@ -327,6 +382,8 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
     }
 
     /// Sets UDP header fields.
+    ///
+    /// Note: checksums are optional if encapsulated in IPv4.
     ///
     /// Transition: Ipv4Header -> UdpHeader.
     #[inline]
@@ -342,14 +399,16 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
             return Err("Data too short to contain a UDP datagram.");
         }
 
-        let mut udp_packet = UdpWriter::new(&mut self.bytes[self.header_len..])?;
+        let mut writer = UdpWriter::new(&mut self.bytes[self.header_len..])?;
 
-        udp_packet.set_src_port(src_port);
-        udp_packet.set_dest_port(dest_port);
-        udp_packet.set_length(length);
-        udp_packet.set_checksum(src_ip, dest_ip);
+        writer.set_src_port(src_port);
+        writer.set_dest_port(dest_port);
+        writer.set_length(length);
 
-        self.header_len += udp_packet.header_len();
+        let pseudo_sum = ipv4_pseudo_header(src_ip, dest_ip, 17, writer.packet_len());
+        writer.set_checksum(pseudo_sum);
+
+        self.header_len += writer.header_len();
 
         Ok(PacketBuilder {
             bytes: self.bytes,
@@ -360,29 +419,146 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
 
     /// Sets ICMP header fields.
     ///
-    /// Transition: Ipv4Header -> IcmpHeader.
+    /// Transition: Ipv4Header -> Icmpv4Header.
     #[inline]
-    pub fn icmp(
+    pub fn icmpv4(
         mut self,
         icmp_type: u8,
         icmp_code: u8,
-    ) -> Result<PacketBuilder<'a, IcmpHeaderState>, &'static str> {
+    ) -> Result<PacketBuilder<'a, Icmpv4HeaderState>, &'static str> {
         if self.bytes.len() < self.header_len {
             return Err("Data too short to contain an ICMP packet.");
         }
 
-        let mut icmp_packet = IcmpWriter::new(&mut self.bytes[self.header_len..])?;
+        let mut writer = Icmpv4Writer::new(&mut self.bytes[self.header_len..])?;
 
-        icmp_packet.set_icmp_type(icmp_type);
-        icmp_packet.set_icmp_code(icmp_code);
-        icmp_packet.set_checksum();
+        writer.set_icmp_type(icmp_type);
+        writer.set_icmp_code(icmp_code);
+        writer.set_checksum();
 
-        self.header_len += icmp_packet.header_len();
+        self.header_len += writer.header_len();
 
         Ok(PacketBuilder {
             bytes: self.bytes,
             header_len: self.header_len,
-            _state: IcmpHeaderState,
+            _state: Icmpv4HeaderState,
+        })
+    }
+}
+
+impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
+    /// Sets TCP header fields.
+    ///
+    /// Transition: Ipv6Header -> TcpHeader.
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    pub fn tcp(
+        mut self,
+        src_addr: &[u8; 16],
+        src_port: u16,
+        dest_addr: &[u8; 16],
+        dest_port: u16,
+        sequence_number: u32,
+        acknowledgment_number: u32,
+        reserved: u8,
+        data_offset: u8,
+        flags: u8,
+        window_size: u16,
+        urgent_pointer: u16,
+    ) -> Result<PacketBuilder<'a, TcpHeaderState>, &'static str> {
+        if self.bytes.len() < self.header_len {
+            return Err("Data too short to contain a TCP segment.");
+        }
+
+        let mut writer = TcpWriter::new(&mut self.bytes[self.header_len..])?;
+
+        writer.set_src_port(src_port);
+        writer.set_dest_port(dest_port);
+        writer.set_sequence_number(sequence_number);
+        writer.set_ack_number(acknowledgment_number);
+        writer.set_reserved(reserved);
+        writer.set_data_offset(data_offset);
+        writer.set_flags(flags);
+        writer.set_window_size(window_size);
+        writer.set_urgent_pointer(urgent_pointer);
+
+        let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 6, writer.packet_len());
+        writer.set_checksum(pseudo_sum);
+
+        self.header_len += writer.header_len();
+
+        Ok(PacketBuilder {
+            bytes: self.bytes,
+            header_len: self.header_len,
+            _state: TcpHeaderState,
+        })
+    }
+
+    /// Sets UDP header fields.
+    ///
+    /// Note: checksums are mandatory if encapsulated in IPv6.
+    ///
+    /// Transition: Ipv6Header -> UdpHeader.
+    #[inline]
+    pub fn udp(
+        mut self,
+        src_addr: &[u8; 16],
+        src_port: u16,
+        dest_addr: &[u8; 16],
+        dest_port: u16,
+        length: u16,
+    ) -> Result<PacketBuilder<'a, UdpHeaderState>, &'static str> {
+        if self.bytes.len() < self.header_len {
+            return Err("Data too short to contain a UDP datagram.");
+        }
+
+        let mut writer = UdpWriter::new(&mut self.bytes[self.header_len..])?;
+
+        writer.set_src_port(src_port);
+        writer.set_dest_port(dest_port);
+        writer.set_length(length);
+
+        let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 17, writer.packet_len());
+        writer.set_checksum(pseudo_sum);
+
+        self.header_len += writer.header_len();
+
+        Ok(PacketBuilder {
+            bytes: self.bytes,
+            header_len: self.header_len,
+            _state: UdpHeaderState,
+        })
+    }
+
+    /// Sets ICMPv6 header fields.
+    ///
+    /// Transition: Ipv6Header -> Icmpv6Header.
+    #[inline]
+    pub fn icmpv6(
+        mut self,
+        src_addr: &[u8; 16],
+        dest_addr: &[u8; 16],
+        icmp_type: u8,
+        icmp_code: u8,
+    ) -> Result<PacketBuilder<'a, Icmpv6HeaderState>, &'static str> {
+        if self.bytes.len() < self.header_len {
+            return Err("Data too short to contain an ICMPv6 packet.");
+        }
+
+        let mut writer = Icmpv6Writer::new(&mut self.bytes[self.header_len..])?;
+
+        writer.set_icmp_type(icmp_type);
+        writer.set_icmp_code(icmp_code);
+
+        let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 58, writer.packet_len());
+        writer.set_checksum(pseudo_sum);
+
+        self.header_len += writer.header_len();
+
+        Ok(PacketBuilder {
+            bytes: self.bytes,
+            header_len: self.header_len,
+            _state: Icmpv6HeaderState,
         })
     }
 }
@@ -444,7 +620,29 @@ impl<'a> PayloadWriter<'a> for PacketBuilder<'a, UdpHeaderState> {
     }
 }
 
-impl<'a> PayloadWriter<'a> for PacketBuilder<'a, IcmpHeaderState> {
+impl<'a> PayloadWriter<'a> for PacketBuilder<'a, Icmpv4HeaderState> {
+    #[inline]
+    fn write_payload(
+        self,
+        payload: &[u8],
+    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
+        if self.bytes.len() - self.header_len < payload.len() {
+            return Err("Data too short to contain the payload.");
+        }
+
+        let payload_start = self.header_len;
+        let payload_end = payload_start + payload.len();
+        self.bytes[payload_start..payload_end].copy_from_slice(payload);
+
+        Ok(PacketBuilder {
+            bytes: self.bytes,
+            header_len: self.header_len,
+            _state: PayloadState,
+        })
+    }
+}
+
+impl<'a> PayloadWriter<'a> for PacketBuilder<'a, Icmpv6HeaderState> {
     #[inline]
     fn write_payload(
         self,
@@ -741,7 +939,7 @@ mod tests {
     }
 
     #[test]
-    fn test_icmp_in_ipv4_in_ethernet() {
+    fn test_icmpv4_in_ipv4_in_ethernet() {
         // Raw packet data.
         let mut packet = [0u8; 64];
 
@@ -780,7 +978,7 @@ mod tests {
                     &[192, 168, 1, 2],
                 )
                 .unwrap()
-                .icmp(8, 0)
+                .icmpv4(8, 0)
                 .unwrap();
         });
 
@@ -792,7 +990,69 @@ mod tests {
     }
 
     #[test]
-    fn test_build_and_parse_qinq() {
+    fn test_build_parse_ipv6() {
+        // IPv6 source address.
+        let src_addr = [
+            0x20, 0x01, 0x0d, 0xb8, 0x85, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x8a, 0x2e, 0x03, 0x70,
+            0x73, 0x34,
+        ];
+
+        // IPv6 destination address.
+        let dest_addr = [
+            0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02, 0xb3, 0xff, 0xfe, 0x1e,
+            0x83, 0x29,
+        ];
+
+        // Raw packet data.
+        let mut buffer = [0u8; 64];
+
+        // Build the packet.
+        let packet = PacketBuilder::new(&mut buffer)
+            .ethernet(
+                &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                &[0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7],
+                34525,
+            )
+            .unwrap()
+            .ipv6(6, 5, 4, 31, 17, 10, &src_addr, &dest_addr)
+            .unwrap()
+            .udp(&src_addr, 99, &dest_addr, 80, 10)
+            .unwrap()
+            .build();
+
+        // Expected output given the chosen values. Checksum should be (21, 45).
+        assert_eq!(
+            packet,
+            [
+                4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 134, 221, 96, 80, 0, 4, 0,
+                31, 17, 10, 32, 1, 13, 184, 133, 163, 0, 0, 0, 0, 138, 46, 3, 112, 115, 52, 254,
+                128, 0, 0, 0, 0, 0, 0, 2, 2, 179, 255, 254, 30, 131, 41, 0, 99, 0, 80, 0, 10, 21,
+                45, 0, 0
+            ]
+        );
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser is successful.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the expected headers are present.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+        assert!(unwrapped.udp.is_some());
+
+        // Ensure the unexpected headers are not present.
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.icmpv4.is_none());
+        assert!(unwrapped.tcp.is_none());
+    }
+
+    #[test]
+    fn test_build_parse_qinq() {
         // Raw packet data.
         let mut buffer = [0u8; 64];
 
@@ -844,7 +1104,7 @@ mod tests {
 
         // Ensure the unexpected headers are not present.
         assert!(unwrapped.arp.is_none());
-        assert!(unwrapped.icmp.is_none());
+        assert!(unwrapped.icmpv4.is_none());
         assert!(unwrapped.tcp.is_none());
 
         // Unwrap ethernet.
@@ -862,5 +1122,62 @@ mod tests {
             ethernet.double_vlan_tag().unwrap(),
             ((ETHERTYPE_QINQ, 200), (ETHERTYPE_VLAN, 100))
         );
+    }
+
+    #[test]
+    fn test_build_parse_qinq_icmpv6() {
+        // Raw packet data.
+        let mut buffer = [0u8; 70];
+
+        // IPv6 source address.
+        let src_addr = [
+            0x20, 0x01, 0x0d, 0xb8, 0x85, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x8a, 0x2e, 0x03, 0x70,
+            0x73, 0x34,
+        ];
+
+        // IPv6 destination address.
+        let dest_addr = [
+            0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02, 0xb3, 0xff, 0xfe, 0x1e,
+            0x83, 0x29,
+        ];
+
+        // Build a valid packet
+        let packet = PacketBuilder::new(&mut buffer)
+            // 22 bytes
+            .ethernet_qinq(
+                &[0x34, 0x97, 0xf6, 0x94, 0x02, 0x0f],
+                &[0x04, 0xb4, 0xfe, 0x9a, 0x81, 0xc7],
+                34525,
+                200,
+                100,
+            )
+            .unwrap()
+            // 60 bytes
+            .ipv6(6, 5, 4, 3, 58, 255, &src_addr, &dest_addr)
+            .unwrap()
+            // 8 bytes
+            .icmpv6(&src_addr, &dest_addr, 128, 0)
+            .unwrap()
+            .build();
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser is successful.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the expected headers are present.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+        assert!(unwrapped.icmpv6.is_some());
+
+        // Ensure the unexpected headers are not present.
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.udp.is_none());
+        assert!(unwrapped.tcp.is_none());
+        assert!(unwrapped.icmpv4.is_none());
     }
 }

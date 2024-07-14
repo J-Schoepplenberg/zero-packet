@@ -28,7 +28,7 @@ impl<'a> IPv4Writer<'a> {
     }
 
     /// Sets the version field.
-    /// 
+    ///
     /// Indicates the IP version number. Should be set to 4.
     #[inline]
     pub fn set_version(&mut self, version: u8) {
@@ -54,7 +54,7 @@ impl<'a> IPv4Writer<'a> {
     }
 
     /// Sets the total length field.
-    /// 
+    ///
     /// Should include the entire packet (header and payload).
     #[inline]
     pub fn set_total_length(&mut self, total_length: u16) {
@@ -168,7 +168,7 @@ impl<'a> IPv4Reader<'a> {
     }
 
     /// Returns the total length field.
-    /// 
+    ///
     /// Includes the entire packet (header and payload).
     #[inline]
     pub fn total_length(&self) -> u16 {
