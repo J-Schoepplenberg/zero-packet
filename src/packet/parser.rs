@@ -221,10 +221,10 @@ impl<'a> PacketParser<'a> {
                 return Err("IPv4 checksum is invalid.");
             }
             Some((ipv4.src_ip(), ipv4.dest_ip(), ipv4.protocol()))
-        } else if let Some(ipv6) = &self.ipv6 {
-            Some((ipv6.src_addr(), ipv6.dest_addr(), ipv6.next_header()))
         } else {
-            None
+            self.ipv6
+                .as_ref()
+                .map(|ipv6| (ipv6.src_addr(), ipv6.dest_addr(), ipv6.next_header()))
         };
 
         if let Some(tcp) = &self.tcp {

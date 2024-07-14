@@ -296,6 +296,7 @@ impl<'a> PacketBuilder<'a, EthernetHeaderState> {
     /// Sets IPv6 header fields.
     ///
     /// Transition: EthernetHeader -> Ipv6Header.
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn ipv6(
         mut self,
