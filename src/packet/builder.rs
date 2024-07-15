@@ -7,10 +7,7 @@ use crate::{
         },
     },
     network::{
-        checksum::{ipv4_pseudo_header, ipv6_pseudo_header},
-        icmpv4::Icmpv4Writer,
-        icmpv6::Icmpv6Writer,
-        ipv4::IPv4Writer,
+        checksum::pseudo_header, icmpv4::Icmpv4Writer, icmpv6::Icmpv6Writer, ipv4::IPv4Writer,
         ipv6::IPv6Writer,
     },
     transport::{tcp::TcpWriter, udp::UdpWriter},
@@ -369,7 +366,7 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
             writer.set_payload(payload)?;
         }
 
-        let pseudo_sum = ipv4_pseudo_header(src_ip, dest_ip, 6, writer.packet_len());
+        let pseudo_sum = pseudo_header(src_ip, dest_ip, 6, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
         self.header_len += writer.header_len();
@@ -410,7 +407,7 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
             writer.set_payload(payload)?;
         }
 
-        let pseudo_sum = ipv4_pseudo_header(src_ip, dest_ip, 17, writer.packet_len());
+        let pseudo_sum = pseudo_header(src_ip, dest_ip, 17, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
         self.header_len += writer.header_len();
@@ -498,7 +495,7 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
             writer.set_payload(payload)?;
         }
 
-        let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 6, writer.packet_len());
+        let pseudo_sum = pseudo_header(src_addr, dest_addr, 6, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
         self.header_len += writer.header_len();
@@ -539,7 +536,7 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
             writer.set_payload(payload)?;
         }
 
-        let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 17, writer.packet_len());
+        let pseudo_sum = pseudo_header(src_addr, dest_addr, 17, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
         self.header_len += writer.header_len();
@@ -576,7 +573,7 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
             writer.set_payload(payload)?;
         }
 
-        let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 58, writer.packet_len());
+        let pseudo_sum = pseudo_header(src_addr, dest_addr, 58, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
         self.header_len += writer.header_len();

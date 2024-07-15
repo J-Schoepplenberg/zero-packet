@@ -45,9 +45,9 @@ impl<'a> Icmpv6Writer<'a> {
     }
 
     /// Sets the payload field.
-    /// 
+    ///
     /// The `PacketBuilder` sets the payload before the checksum.
-    /// 
+    ///
     /// That is, because the checksum is invalidated if a payload is set after it.
     #[inline]
     pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
@@ -57,7 +57,7 @@ impl<'a> Icmpv6Writer<'a> {
         if self.packet_len() - start < payload_len {
             return Err("Payload is too large to fit in the ICMPv6 packet.");
         }
-        
+
         let end = start + payload_len;
         self.bytes[start..end].copy_from_slice(payload);
 
@@ -144,7 +144,7 @@ impl fmt::Debug for Icmpv6Reader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network::checksum::ipv6_pseudo_header;
+    use crate::network::checksum::pseudo_header;
 
     #[test]
     fn test_getters_and_setters() {
@@ -175,7 +175,7 @@ mod tests {
         writer.set_icmp_code(icmp_code);
 
         // Set the checksum including the pseudo header.
-        let pseudo_sum = ipv6_pseudo_header(&src_addr, &dest_addr, protocol, length);
+        let pseudo_sum = pseudo_header(&src_addr, &dest_addr, protocol, length);
         writer.set_checksum(pseudo_sum);
 
         // Create a ICMPv6 reader.

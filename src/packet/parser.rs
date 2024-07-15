@@ -5,7 +5,7 @@ use crate::{
     },
     misc::{EtherType, Icmpv4Type, Icmpv6Type, IpProtocol},
     network::{
-        checksum::{ipv4_pseudo_header, ipv6_pseudo_header, verify_internet_checksum},
+        checksum::{pseudo_header, verify_internet_checksum},
         icmpv4::{Icmpv4Reader, ICMPV4_MAX_VALID_CODE},
         icmpv6::Icmpv6Reader,
         ipv4::{IPv4Reader, IPV4_MIN_HEADER_LENGTH},
@@ -216,15 +216,15 @@ impl<'a> PacketParser<'a> {
     /// Verifies the checksums of encapsulated headers.
     #[inline]
     pub fn verify_checksums(&self) -> Result<(), &'static str> {
-        let pseudo = if let Some(ipv4) = &self.ipv4 {
-            if !verify_internet_checksum(ipv4.header(), 0) {
-                return Err("IPv4 checksum is invalid.");
+        let pseudo = match (&self.ipv4, &self.ipv6) {
+            (Some(ipv4), _) => {
+                if !verify_internet_checksum(ipv4.header(), 0) {
+                    return Err("IPv4 checksum is invalid.");
+                }
+                Some((ipv4.src_ip(), ipv4.dest_ip(), ipv4.protocol()))
             }
-            Some((ipv4.src_ip(), ipv4.dest_ip(), ipv4.protocol()))
-        } else {
-            self.ipv6
-                .as_ref()
-                .map(|ipv6| (ipv6.src_addr(), ipv6.dest_addr(), ipv6.next_header()))
+            (_, Some(ipv6)) => Some((ipv6.src_addr(), ipv6.dest_addr(), ipv6.next_header())),
+            (None, None) => None,
         };
 
         if let Some(tcp) = &self.tcp {
@@ -260,18 +260,16 @@ impl<'a> PacketParser<'a> {
             pseudo.ok_or("Checksum cannot be verified without a pseudo header.")?;
 
         let pseudo_sum = match src.len() {
-            4 => ipv4_pseudo_header(
-                src.try_into().unwrap(),  // won't panic
-                dest.try_into().unwrap(), // won't panic
-                protocol,
-                bytes.len(),
-            ),
-            16 => ipv6_pseudo_header(
-                src.try_into().unwrap(),  // won't panic
-                dest.try_into().unwrap(), // won't panic
-                protocol,
-                bytes.len(),
-            ),
+            4 => {
+                let src: [u8; 4] = src.try_into().unwrap(); // won't panic
+                let dest: [u8; 4] = dest.try_into().unwrap(); // won't panic
+                pseudo_header(&src, &dest, protocol, bytes.len())
+            }
+            16 => {
+                let src: [u8; 16] = src.try_into().unwrap(); // won't panic
+                let dest: [u8; 16] = dest.try_into().unwrap(); // won't panic
+                pseudo_header(&src, &dest, protocol, bytes.len())
+            }
             _ => return Err("Unsupported IP address length for pseudo header."),
         };
 

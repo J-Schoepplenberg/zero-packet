@@ -97,9 +97,9 @@ impl<'a> TcpWriter<'a> {
     }
 
     /// Sets the payload field.
-    /// 
+    ///
     /// The `PacketBuilder` sets the payload before the checksum.
-    /// 
+    ///
     /// That is, because the checksum is invalidated if a payload is set after it.
     #[inline]
     pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
@@ -109,7 +109,7 @@ impl<'a> TcpWriter<'a> {
         if self.packet_len() - start < payload_len {
             return Err("Payload is too large to fit in the TCP packet.");
         }
-        
+
         let end = start + payload_len;
         self.bytes[start..end].copy_from_slice(payload);
 
@@ -251,7 +251,7 @@ impl<'a> fmt::Debug for TcpReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network::checksum::ipv4_pseudo_header;
+    use crate::network::checksum::pseudo_header;
 
     #[test]
     fn test_getters_and_setters() {
@@ -286,7 +286,7 @@ mod tests {
         writer.set_urgent_pointer(urgent_pointer);
 
         // Set the checksum including the pseudo header.
-        let pseudo_sum = ipv4_pseudo_header(&src_ip, &dest_ip, 6, writer.packet_len());
+        let pseudo_sum = pseudo_header(&src_ip, &dest_ip, 6, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
         // Create a TCP packet reader.

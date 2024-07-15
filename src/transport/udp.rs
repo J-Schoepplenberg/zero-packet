@@ -71,9 +71,9 @@ impl<'a> UdpWriter<'a> {
     }
 
     /// Sets the payload field.
-    /// 
+    ///
     /// The `PacketBuilder` sets the payload before the checksum.
-    /// 
+    ///
     /// That is, because the checksum is invalidated if a payload is set after it.
     #[inline]
     pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
@@ -83,7 +83,7 @@ impl<'a> UdpWriter<'a> {
         if self.packet_len() - start < payload_len {
             return Err("Payload is too large to fit in the TCP packet.");
         }
-        
+
         let end = start + payload_len;
         self.bytes[start..end].copy_from_slice(payload);
 
@@ -166,7 +166,7 @@ impl fmt::Debug for UdpReader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network::checksum::ipv4_pseudo_header;
+    use crate::network::checksum::pseudo_header;
 
     #[test]
     fn test_getters_and_setters() {
@@ -189,7 +189,7 @@ mod tests {
         writer.set_length(length);
 
         // Calculate the checksum.
-        let pseudo_sum = ipv4_pseudo_header(&src_ip, &dest_ip, 17, writer.packet_len());
+        let pseudo_sum = pseudo_header(&src_ip, &dest_ip, 17, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
         // Create a UDP packet reader.
