@@ -96,6 +96,26 @@ impl<'a> TcpWriter<'a> {
         self.bytes[19] = (urgent_pointer & 0xFF) as u8;
     }
 
+    /// Sets the payload field.
+    /// 
+    /// The `PacketBuilder` sets the payload before the checksum.
+    /// 
+    /// That is, because the checksum is invalidated if a payload is set after it.
+    #[inline]
+    pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
+        let start = self.header_len();
+        let payload_len = payload.len();
+
+        if self.packet_len() - start < payload_len {
+            return Err("Payload is too large to fit in the TCP packet.");
+        }
+        
+        let end = start + payload_len;
+        self.bytes[start..end].copy_from_slice(payload);
+
+        Ok(())
+    }
+
     /// Calculates the checksum field for error checking.
     ///
     /// Includes the TCP header, payload and IPv4 pseudo header.

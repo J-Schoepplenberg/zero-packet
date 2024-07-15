@@ -32,7 +32,7 @@
 
     ```toml
     [dependencies]
-    zero-packet = "0.0.7"
+    zero-packet = "0.0.8"
     ```
 
     ## PacketBuilder
@@ -56,8 +56,7 @@
     packet_builder
         .ethernet(src_mac, dest_mac, ethertype)?
         .ipv4(version, ihl, dscp, ecn, total_length, id, flags, fragment_offset, ttl, protocol, src_ip, dest_ip)?
-        .udp(src_ip, src_port, dest_ip, dest_port, length)?
-        .payload(payload)?;
+        .udp(src_ip, src_port, dest_ip, dest_port, length, Some(payload))?
     ```
 
     ## PacketParser

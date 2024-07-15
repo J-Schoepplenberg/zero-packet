@@ -30,12 +30,9 @@ use crate::{
 //    |                            /        / \
 //    v                           /        /   \
 // Ipv4Header +------------------/----+   /     \
-//    |           \           \ /      \ /       \
-//    |            v           v        v         v
-//    |      Icmpv4Header TcpHeader UdpHeader Icmpv6Header
-//    |            |           |        |         |
-//    |            v           v        v         v
-//    +-------------------------> Payload < ------+
+//                \           \ /      \ /       \
+//                 v           v        v         v
+//           Icmpv4Header TcpHeader UdpHeader Icmpv6Header
 
 /// Zero-sized struct representing the `Raw` state of the `PacketBuilder` state machine.
 pub struct RawState;
@@ -63,9 +60,6 @@ pub struct Icmpv4HeaderState;
 
 /// Zero-sized struct representing the `Icmpv6Header` state of the `PacketBuilder` state machine.
 pub struct Icmpv6HeaderState;
-
-/// Zero-sized struct representing the `Payload` state of the `PacketBuilder` state machine.
-pub struct PayloadState;
 
 /// A zero-copy packet builder.
 ///
@@ -353,6 +347,7 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         flags: u8,
         window_size: u16,
         urgent_pointer: u16,
+        payload: Option<&[u8]>,
     ) -> Result<PacketBuilder<'a, TcpHeaderState>, &'static str> {
         if self.bytes.len() < self.header_len {
             return Err("Data too short to contain a TCP segment.");
@@ -369,6 +364,10 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         writer.set_flags(flags);
         writer.set_window_size(window_size);
         writer.set_urgent_pointer(urgent_pointer);
+
+        if let Some(payload) = payload {
+            writer.set_payload(payload)?;
+        }
 
         let pseudo_sum = ipv4_pseudo_header(src_ip, dest_ip, 6, writer.packet_len());
         writer.set_checksum(pseudo_sum);
@@ -395,6 +394,7 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         dest_ip: &[u8; 4],
         dest_port: u16,
         length: u16,
+        payload: Option<&[u8]>,
     ) -> Result<PacketBuilder<'a, UdpHeaderState>, &'static str> {
         if self.bytes.len() < self.header_len {
             return Err("Data too short to contain a UDP datagram.");
@@ -405,6 +405,10 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         writer.set_src_port(src_port);
         writer.set_dest_port(dest_port);
         writer.set_length(length);
+
+        if let Some(payload) = payload {
+            writer.set_payload(payload)?;
+        }
 
         let pseudo_sum = ipv4_pseudo_header(src_ip, dest_ip, 17, writer.packet_len());
         writer.set_checksum(pseudo_sum);
@@ -426,6 +430,7 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         mut self,
         icmp_type: u8,
         icmp_code: u8,
+        payload: Option<&[u8]>,
     ) -> Result<PacketBuilder<'a, Icmpv4HeaderState>, &'static str> {
         if self.bytes.len() < self.header_len {
             return Err("Data too short to contain an ICMP packet.");
@@ -435,6 +440,11 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
 
         writer.set_icmp_type(icmp_type);
         writer.set_icmp_code(icmp_code);
+
+        if let Some(payload) = payload {
+            writer.set_payload(payload)?;
+        }
+
         writer.set_checksum();
 
         self.header_len += writer.header_len();
@@ -466,6 +476,7 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         flags: u8,
         window_size: u16,
         urgent_pointer: u16,
+        payload: Option<&[u8]>,
     ) -> Result<PacketBuilder<'a, TcpHeaderState>, &'static str> {
         if self.bytes.len() < self.header_len {
             return Err("Data too short to contain a TCP segment.");
@@ -482,6 +493,10 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         writer.set_flags(flags);
         writer.set_window_size(window_size);
         writer.set_urgent_pointer(urgent_pointer);
+
+        if let Some(payload) = payload {
+            writer.set_payload(payload)?;
+        }
 
         let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 6, writer.packet_len());
         writer.set_checksum(pseudo_sum);
@@ -508,6 +523,7 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         dest_addr: &[u8; 16],
         dest_port: u16,
         length: u16,
+        payload: Option<&[u8]>,
     ) -> Result<PacketBuilder<'a, UdpHeaderState>, &'static str> {
         if self.bytes.len() < self.header_len {
             return Err("Data too short to contain a UDP datagram.");
@@ -518,6 +534,10 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         writer.set_src_port(src_port);
         writer.set_dest_port(dest_port);
         writer.set_length(length);
+
+        if let Some(payload) = payload {
+            writer.set_payload(payload)?;
+        }
 
         let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 17, writer.packet_len());
         writer.set_checksum(pseudo_sum);
@@ -541,6 +561,7 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         dest_addr: &[u8; 16],
         icmp_type: u8,
         icmp_code: u8,
+        payload: Option<&[u8]>,
     ) -> Result<PacketBuilder<'a, Icmpv6HeaderState>, &'static str> {
         if self.bytes.len() < self.header_len {
             return Err("Data too short to contain an ICMPv6 packet.");
@@ -551,6 +572,10 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         writer.set_icmp_type(icmp_type);
         writer.set_icmp_code(icmp_code);
 
+        if let Some(payload) = payload {
+            writer.set_payload(payload)?;
+        }
+
         let pseudo_sum = ipv6_pseudo_header(src_addr, dest_addr, 58, writer.packet_len());
         writer.set_checksum(pseudo_sum);
 
@@ -560,107 +585,6 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
             bytes: self.bytes,
             header_len: self.header_len,
             _state: Icmpv6HeaderState,
-        })
-    }
-}
-
-/// Interface for writing the payload for a packet.
-///
-/// Implemented for `PacketBuilder` in the `TcpHeader`, `UdpHeader`, and `IcmpHeader` states.
-pub trait PayloadWriter<'a> {
-    /// Writes a given payload to the packet and transitions into the `Payload` state.
-    ///
-    /// `PacketBuilder::payload_len()` may be different than the written payload.
-    ///
-    /// That is, because the data slice, which we mutate in-place, can be longer than the payload.
-    fn write_payload(self, payload: &[u8])
-        -> Result<PacketBuilder<'a, PayloadState>, &'static str>;
-}
-
-impl<'a> PayloadWriter<'a> for PacketBuilder<'a, TcpHeaderState> {
-    #[inline]
-    fn write_payload(
-        self,
-        payload: &[u8],
-    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
-        if self.bytes.len() - self.header_len < payload.len() {
-            return Err("Data too short to contain the payload.");
-        }
-
-        let payload_start = self.header_len;
-        let payload_end = payload_start + payload.len();
-        self.bytes[payload_start..payload_end].copy_from_slice(payload);
-
-        Ok(PacketBuilder {
-            bytes: self.bytes,
-            header_len: self.header_len,
-            _state: PayloadState,
-        })
-    }
-}
-
-impl<'a> PayloadWriter<'a> for PacketBuilder<'a, UdpHeaderState> {
-    #[inline]
-    fn write_payload(
-        self,
-        payload: &[u8],
-    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
-        if self.bytes.len() - self.header_len < payload.len() {
-            return Err("Data too short to contain the payload.");
-        }
-
-        let payload_start = self.header_len;
-        let payload_end = payload_start + payload.len();
-        self.bytes[payload_start..payload_end].copy_from_slice(payload);
-
-        Ok(PacketBuilder {
-            bytes: self.bytes,
-            header_len: self.header_len,
-            _state: PayloadState,
-        })
-    }
-}
-
-impl<'a> PayloadWriter<'a> for PacketBuilder<'a, Icmpv4HeaderState> {
-    #[inline]
-    fn write_payload(
-        self,
-        payload: &[u8],
-    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
-        if self.bytes.len() - self.header_len < payload.len() {
-            return Err("Data too short to contain the payload.");
-        }
-
-        let payload_start = self.header_len;
-        let payload_end = payload_start + payload.len();
-        self.bytes[payload_start..payload_end].copy_from_slice(payload);
-
-        Ok(PacketBuilder {
-            bytes: self.bytes,
-            header_len: self.header_len,
-            _state: PayloadState,
-        })
-    }
-}
-
-impl<'a> PayloadWriter<'a> for PacketBuilder<'a, Icmpv6HeaderState> {
-    #[inline]
-    fn write_payload(
-        self,
-        payload: &[u8],
-    ) -> Result<PacketBuilder<'a, PayloadState>, &'static str> {
-        if self.bytes.len() - self.header_len < payload.len() {
-            return Err("Data too short to contain the payload.");
-        }
-
-        let payload_start = self.header_len;
-        let payload_end = payload_start + payload.len();
-        self.bytes[payload_start..payload_end].copy_from_slice(payload);
-
-        Ok(PacketBuilder {
-            bytes: self.bytes,
-            header_len: self.header_len,
-            _state: PayloadState,
         })
     }
 }
@@ -678,28 +602,38 @@ mod tests {
         // Raw packet data.
         let mut buffer = [0u8; 64];
 
+        let payload = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
         // Construct PacketBuilder with an Ethernet header, an IPv4 header, a UDP header, and a payload.
         let packet_builder = PacketBuilder::new(&mut buffer)
+            // 14 bytes
             .ethernet(&[1, 2, 3, 4, 5, 6], &[7, 8, 9, 10, 11, 12], 0x0800)
             .unwrap()
+            // 20 bytes
             .ipv4(
                 4,
                 5,
                 0,
                 0,
-                0,
+                50,
                 0,
                 0,
                 0,
                 64,
-                1,
+                17,
                 &[192, 168, 1, 1],
                 &[192, 168, 1, 2],
             )
             .unwrap()
-            .udp(&[192, 168, 1, 1], 12345, &[192, 168, 1, 2], 54321, 0)
-            .unwrap()
-            .write_payload(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+            // 8 bytes + 10 bytes
+            .udp(
+                &[192, 168, 1, 1],
+                12345,
+                &[192, 168, 1, 2],
+                54321,
+                30,
+                Some(&payload),
+            )
             .unwrap();
 
         // Ensure the header length is correct.
@@ -708,25 +642,35 @@ mod tests {
             ETHERNET_MIN_HEADER_LENGTH + IPV4_MIN_HEADER_LENGTH + UDP_HEADER_LENGTH
         );
 
-        // Since the buffer slice is bigger than the header length + written payload length,
-        // the data that follows all headers is not the same as the written payload.
-        assert_ne!(
-            packet_builder.payload_len(),
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].len()
+        // Ensure the payload is correct.
+        assert_eq!(
+            packet_builder.payload(),
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
 
         // Build the packet.
         let packet = packet_builder.build();
 
-        // Expected output given the chosen values.
-        let should_be = [
-            7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 8, 0, 69, 0, 0, 0, 0, 0, 0, 0, 64, 1, 247, 169,
-            192, 168, 1, 1, 192, 168, 1, 2, 48, 57, 212, 49, 0, 0, 120, 17, 1, 2, 3, 4, 5, 6, 7, 8,
-            9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ];
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
 
-        // Output should match the exepectation.
-        assert_eq!(packet, should_be);
+        // Ensure the parser succeeded.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let parser = parser.unwrap();
+
+        // Ensure the parser contains an UDP header.
+        assert!(parser.udp.is_some());
+
+        // Unwrap the UDP header.
+        let udp = parser.udp.unwrap();
+
+        // Ensure the payload is correct.
+        assert_eq!(
+            udp.payload(),
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
     }
 
     #[test]
@@ -877,6 +821,7 @@ mod tests {
                     99,
                     4321,
                     1234,
+                    None,
                 )
                 .unwrap();
         });
@@ -928,7 +873,7 @@ mod tests {
                     &[192, 168, 1, 2],
                 )
                 .unwrap()
-                .udp(&[192, 168, 1, 1], 99, &[192, 168, 1, 2], 11, 4321)
+                .udp(&[192, 168, 1, 1], 99, &[192, 168, 1, 2], 11, 4321, None)
                 .unwrap();
         });
 
@@ -979,7 +924,7 @@ mod tests {
                     &[192, 168, 1, 2],
                 )
                 .unwrap()
-                .icmpv4(8, 0)
+                .icmpv4(8, 0, None)
                 .unwrap();
         });
 
@@ -1017,7 +962,7 @@ mod tests {
             .unwrap()
             .ipv6(6, 5, 4, 31, 17, 10, &src_addr, &dest_addr)
             .unwrap()
-            .udp(&src_addr, 99, &dest_addr, 80, 10)
+            .udp(&src_addr, 99, &dest_addr, 80, 10, None)
             .unwrap()
             .build();
 
@@ -1085,7 +1030,7 @@ mod tests {
             )
             .unwrap()
             // 8 bytes
-            .udp(&[192, 168, 1, 1], 99, &[192, 168, 1, 2], 11, 22)
+            .udp(&[192, 168, 1, 1], 99, &[192, 168, 1, 2], 11, 22, None)
             .unwrap()
             .build();
 
@@ -1157,7 +1102,7 @@ mod tests {
             .ipv6(6, 5, 4, 3, 58, 255, &src_addr, &dest_addr)
             .unwrap()
             // 8 bytes
-            .icmpv6(&src_addr, &dest_addr, 128, 0)
+            .icmpv6(&src_addr, &dest_addr, 128, 0, None)
             .unwrap()
             .build();
 

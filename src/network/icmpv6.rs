@@ -44,6 +44,26 @@ impl<'a> Icmpv6Writer<'a> {
         self.bytes[1] = icmp_code;
     }
 
+    /// Sets the payload field.
+    /// 
+    /// The `PacketBuilder` sets the payload before the checksum.
+    /// 
+    /// That is, because the checksum is invalidated if a payload is set after it.
+    #[inline]
+    pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
+        let start = self.header_len();
+        let payload_len = payload.len();
+
+        if self.packet_len() - start < payload_len {
+            return Err("Payload is too large to fit in the ICMPv6 packet.");
+        }
+        
+        let end = start + payload_len;
+        self.bytes[start..end].copy_from_slice(payload);
+
+        Ok(())
+    }
+
     /// Calculates the internet checksum for error checking.
     ///
     /// Includes the ICMPv6 header, payload and IPv6 pseudo header.

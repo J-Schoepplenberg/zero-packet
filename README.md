@@ -37,7 +37,7 @@ Or add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zero-packet = "0.0.7"
+zero-packet = "0.0.8"
 ```
 
 ### PacketBuilder
@@ -63,8 +63,7 @@ let mut packet_builder = PacketBuilder::new(&mut buffer);
 let packet: &[u8] = packet_builder
     .ethernet(src_mac, dest_mac, ethertype)?
     .ipv4(version, ihl, dscp, ecn, total_length, id, flags, fragment_offset, ttl, protocol, src_ip, dest_ip)?
-    .udp(src_ip, src_port, dest_ip, dest_port, length)?
-    .write_payload(payload)?
+    .udp(src_ip, src_port, dest_ip, dest_port, length, Some(payload))?
     .build();
 ```
 

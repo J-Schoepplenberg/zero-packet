@@ -69,6 +69,26 @@ impl<'a> UdpWriter<'a> {
         self.bytes[6] = (checksum >> 8) as u8;
         self.bytes[7] = (checksum & 0xff) as u8;
     }
+
+    /// Sets the payload field.
+    /// 
+    /// The `PacketBuilder` sets the payload before the checksum.
+    /// 
+    /// That is, because the checksum is invalidated if a payload is set after it.
+    #[inline]
+    pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
+        let start = self.header_len();
+        let payload_len = payload.len();
+
+        if self.packet_len() - start < payload_len {
+            return Err("Payload is too large to fit in the TCP packet.");
+        }
+        
+        let end = start + payload_len;
+        self.bytes[start..end].copy_from_slice(payload);
+
+        Ok(())
+    }
 }
 
 /// Reads UDP header fields.

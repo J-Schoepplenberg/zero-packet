@@ -29,6 +29,12 @@ impl<'a> Icmpv4Writer<'a> {
         ICMPV4_HEADER_LENGTH
     }
 
+    /// Returns the total length of the packet in bytes.
+    #[inline]
+    pub fn packet_len(&self) -> usize {
+        self.bytes.len()
+    }
+
     /// Returns the identifier field.
     #[inline]
     pub fn set_icmp_type(&mut self, icmp_type: u8) {
@@ -39,6 +45,26 @@ impl<'a> Icmpv4Writer<'a> {
     #[inline]
     pub fn set_icmp_code(&mut self, code: u8) {
         self.bytes[1] = code;
+    }
+
+    /// Sets the payload field.
+    /// 
+    /// The `PacketBuilder` sets the payload before the checksum.
+    /// 
+    /// That is, because the checksum is invalidated if a payload is set after it.
+    #[inline]
+    pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), &'static str> {
+        let start = self.header_len();
+        let payload_len = payload.len();
+
+        if self.packet_len() - start < payload_len {
+            return Err("Payload is too large to fit in the ICMPv4 packet.");
+        }
+        
+        let end = start + payload_len;
+        self.bytes[start..end].copy_from_slice(payload);
+
+        Ok(())
     }
 
     /// Calculates the internet checksum for error checking.
