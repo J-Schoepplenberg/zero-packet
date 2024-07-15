@@ -231,7 +231,7 @@ impl<'a> TcpReader<'a> {
     }
 }
 
-impl<'a> fmt::Debug for TcpReader<'a> {
+impl fmt::Debug for TcpReader<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("TcpSegment")
             .field("src_port", &self.src_port())

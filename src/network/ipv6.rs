@@ -238,7 +238,7 @@ impl<'a> IPv6Reader<'a> {
     }
 }
 
-impl<'a> fmt::Debug for IPv6Reader<'a> {
+impl fmt::Debug for IPv6Reader<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut s_buf = [0u8; 39];
         let s_len = bytes_to_ipv6(self.src_addr(), &mut s_buf);

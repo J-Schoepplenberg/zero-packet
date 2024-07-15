@@ -34,18 +34,16 @@ impl<'a> PacketParser<'a> {
     /// Parses a raw Ethernet frame.
     ///
     /// Is strict about what input it accepts.
+    #[inline]
     pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
-        if bytes.len() < ETHERNET_MIN_FRAME_LENGTH {
-            return Err("Slice needs to be least 64 bytes long to be a valid Ethernet frame.");
-        }
-
-        let reader = EthernetReader::new(bytes)?;
-        let header_len = reader.header_len();
-        let ethertype = reader.ethertype();
+        let ethernet = EthernetReader::parse(bytes)?;
+        let ethernet_len = ethernet.header_len();
+        let payload = &bytes[ethernet_len..];
+        let ethertype = ethernet.ethertype();
 
         let mut parser = PacketParser {
+            ethernet: Some(ethernet),
             arp: None,
-            ethernet: Some(reader),
             ipv4: None,
             ipv6: None,
             tcp: None,
@@ -55,45 +53,108 @@ impl<'a> PacketParser<'a> {
         };
 
         match EtherType::from(ethertype) {
-            EtherType::Arp => parser.parse_arp(&bytes[header_len..])?,
-            EtherType::Ipv4 => parser.parse_ipv4(&bytes[header_len..])?,
-            EtherType::Ipv6 => parser.parse_ipv6(&bytes[header_len..])?,
+            EtherType::Arp => parser.arp = Some(ArpReader::parse(payload)?),
+            EtherType::Ipv4 => {
+                let ipv4 = IPv4Reader::parse(payload)?;
+
+                ipv4.verify_checksum()?;
+
+                let header_len = ethernet_len + ipv4.header_len();
+                let ip_payload = &bytes[header_len..];
+
+                match IpProtocol::from(ipv4.protocol()) {
+                    IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(ip_payload)?),
+                    IpProtocol::Udp => parser.udp = Some(UdpReader::parse(ip_payload)?),
+                    IpProtocol::Icmpv4 => parser.icmpv4 = Some(Icmpv4Reader::parse(ip_payload)?),
+                    _ => return Err("Unknown IPv4 Protocol."),
+                }
+
+                parser.ipv4 = Some(ipv4);
+            },
+            EtherType::Ipv6 => {
+                let ipv6 = IPv6Reader::parse(payload)?;
+
+                ipv6.verify_checksum()?;
+
+                let header_len = ethernet_len + ipv6.header_len();
+                let ip_payload = &bytes[header_len..];
+
+                match IpProtocol::from(ipv6.next_header()) {
+                    IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(ip_payload)?),
+                    IpProtocol::Udp => parser.udp = Some(UdpReader::parse(ip_payload)?),
+                    IpProtocol::Icmpv6 => parser.icmpv6 = Some(Icmpv6Reader::parse(ip_payload)?),
+                    _ => return Err("Unknown IPv6 Protocol."),
+                }
+
+                parser.ipv6 = Some(ipv6);
+            },
             EtherType::Unknown(_) => return Err("Unknown or unsupported EtherType"),
         }
 
-        parser.verify_checksums()?;
-
         Ok(parser)
     }
+}
 
-    /// Parses an ARP header.
+/// Trait to parse a protocol header.
+pub trait Parse<'a>: Sized {
+    /// Parses the protocol header from the given slice.
     ///
-    /// ARP was originally designed for Ethernet, IPv4 and MAC addresses.
+    /// Checks certain fields for validity.
     ///
-    /// Theoretically, it can also be used with other combinations of protocols.
+    /// May fail if any of the fields are deemed invalid.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - A slice containing the raw bytes of the protocol header.
+    ///
+    /// # Returns
+    ///
+    /// A result containing the parsed protocol header on success, or a static string error message on failure.
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str>;
+}
+
+impl<'a> Parse<'a> for EthernetReader<'a> {
+    /// Parses an Ethernet frame from a byte slice.
+    ///
+    /// Validates that the byte slice is at least the minimum Ethernet frame length.
     #[inline]
-    pub fn parse_arp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
+        if bytes.len() < ETHERNET_MIN_FRAME_LENGTH {
+            return Err("Slice needs to be least 64 bytes long to be a valid Ethernet frame.");
+        }
+
+        EthernetReader::new(bytes)
+    }
+}
+
+impl<'a> Parse<'a> for ArpReader<'a> {
+    /// Parses an ARP packet from a byte slice.
+    ///
+    /// Validates the ARP operation field.
+    #[inline]
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let reader = ArpReader::new(bytes)?;
 
         if reader.oper() > 2 {
             return Err("ARP operation field is invalid, expected request (1) or reply (2).");
         }
 
-        self.arp = Some(reader);
-
-        Ok(())
+        Ok(reader)
     }
+}
 
-    /// Parses a IPv4 header.
+impl<'a> Parse<'a> for IPv4Reader<'a> {
+    /// Parses an IPv4 packet from a byte slice.
+    ///
+    /// Validates the IPv4 version, header length, total length, and checksum fields.
     #[inline]
-    pub fn parse_ipv4(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let reader = IPv4Reader::new(bytes)?;
 
         if reader.version() != 4 {
             return Err("IPv4 version field is invalid. Expected version 4.");
         }
 
-        let protocol = reader.protocol();
         let total_length = reader.total_length();
         let header_len = reader.header_len();
         let packet_len = bytes.len();
@@ -110,44 +171,38 @@ impl<'a> PacketParser<'a> {
             return Err("IPv4 total length field is invalid. Does not match actual length.");
         }
 
-        self.ipv4 = Some(reader);
-
-        match IpProtocol::from(protocol) {
-            IpProtocol::Tcp => self.parse_tcp(&bytes[header_len..])?,
-            IpProtocol::Udp => self.parse_udp(&bytes[header_len..])?,
-            IpProtocol::Icmpv4 => self.parse_icmpv4(&bytes[header_len..])?,
-            _ => return Err("Unknown IPv4 Protocol."),
+        if !reader.valid_checksum() {
+            return Err("IPv4 checksum is invalid.");
         }
 
-        Ok(())
+        Ok(reader)
     }
+}
 
+impl<'a> Parse<'a> for IPv6Reader<'a> {
+    /// Parses an IPv6 packet from a byte slice.
+    ///
+    /// Validates the IPv6 version field.
+    /// 
+    /// Note: IPv6 does not have a checksum field.
     #[inline]
-    pub fn parse_ipv6(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let reader = IPv6Reader::new(bytes)?;
 
         if reader.version() != 6 {
             return Err("IPv6 version field is invalid. Expected version 6.");
         }
 
-        let header_len = reader.header_len();
-        let protocol = reader.next_header();
-
-        self.ipv6 = Some(reader);
-
-        match IpProtocol::from(protocol) {
-            IpProtocol::Tcp => self.parse_tcp(&bytes[header_len..])?,
-            IpProtocol::Udp => self.parse_udp(&bytes[header_len..])?,
-            IpProtocol::Icmpv6 => self.parse_icmpv6(&bytes[header_len..])?,
-            _ => return Err("Unknown IPv6 Protocol."),
-        }
-
-        Ok(())
+        Ok(reader)
     }
+}
 
-    /// Parses a TCP header.
+impl<'a> Parse<'a> for TcpReader<'a> {
+    /// Parses a TCP segment from a byte slice.
+    ///
+    /// Validates the TCP header length and flags fields.
     #[inline]
-    pub fn parse_tcp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let reader = TcpReader::new(bytes)?;
 
         if reader.header_len() < TCP_MIN_HEADER_LENGTH {
@@ -158,14 +213,16 @@ impl<'a> PacketParser<'a> {
             return Err("TCP flags field is invalid.");
         }
 
-        self.tcp = Some(reader);
-
-        Ok(())
+        Ok(reader)
     }
+}
 
-    /// Parses a UDP header.
+impl<'a> Parse<'a> for UdpReader<'a> {
+    /// Parses a UDP datagram from a byte slice.
+    ///
+    /// Validates the UDP length field against the actual length of the datagram.
     #[inline]
-    pub fn parse_udp(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let reader = UdpReader::new(bytes)?;
 
         let header_len = reader.header_len();
@@ -176,14 +233,16 @@ impl<'a> PacketParser<'a> {
             return Err("UDP length field is invalid. Does not match actual length.");
         }
 
-        self.udp = Some(reader);
-
-        Ok(())
+        Ok(reader)
     }
+}
 
-    /// Parses an ICMPv4 header.
+impl<'a> Parse<'a> for Icmpv4Reader<'a> {
+    /// Parses an ICMPv4 message from a byte slice.
+    ///
+    /// Validates the ICMPv4 type and code fields.
     #[inline]
-    pub fn parse_icmpv4(&mut self, bytes: &'a [u8]) -> Result<(), &'static str> {
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let reader = Icmpv4Reader::new(bytes)?;
 
         if Icmpv4Type::from(reader.icmp_type()) == Icmpv4Type::Unknown {
@@ -194,135 +253,76 @@ impl<'a> PacketParser<'a> {
             return Err("ICMPv4 code field is invalid.");
         }
 
-        self.icmpv4 = Some(reader);
-
-        Ok(())
+        Ok(reader)
     }
+}
 
-    /// Parses an ICMPv6 header.
+impl<'a> Parse<'a> for Icmpv6Reader<'a> {
+    /// Parses an ICMPv6 message from a byte slice.
+    ///
+    /// Validates the ICMPv6 type field.
     #[inline]
-    pub fn parse_icmpv6(&mut self, _bytes: &'a [u8]) -> Result<(), &'static str> {
-        let reader = Icmpv6Reader::new(_bytes)?;
+    fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
+        let reader = Icmpv6Reader::new(bytes)?;
 
         if Icmpv6Type::from(reader.icmp_type()) == Icmpv6Type::Unknown {
             return Err("ICMPv6 type field is invalid.");
         }
 
-        self.icmpv6 = Some(reader);
-
-        Ok(())
+        Ok(reader)
     }
+}
 
-    /// Verifies the checksums of encapsulated headers.
-    #[inline]
-    pub fn verify_checksums(&self) -> Result<(), &'static str> {
-        let pseudo = match (&self.ipv4, &self.ipv6) {
-            (Some(ipv4), _) => {
-                if !verify_internet_checksum(ipv4.header(), 0) {
-                    return Err("IPv4 checksum is invalid.");
-                }
-                Some((ipv4.src_ip(), ipv4.dest_ip(), ipv4.protocol()))
-            }
-            (_, Some(ipv6)) => Some((ipv6.src_addr(), ipv6.dest_addr(), ipv6.next_header())),
-            (None, None) => None,
-        };
-
-        if let Some(tcp) = &self.tcp {
-            Self::verify_transport_checksum(tcp.bytes, pseudo)?;
-        }
-
-        if let Some(udp) = &self.udp {
-            Self::verify_transport_checksum(udp.bytes, pseudo)?;
-        }
-
-        if let Some(icmpv4) = &self.icmpv4 {
-            if !verify_internet_checksum(icmpv4.bytes, 0) {
-                return Err("ICMPv4 checksum is invalid.");
-            }
-        }
-
-        if let Some(icmpv6) = &self.icmpv6 {
-            Self::verify_transport_checksum(icmpv6.bytes, pseudo)?;
-        }
-
-        Ok(())
-    }
-
-    /// Verifies the checksum of a transport protocol.
+/// Trait to verify the checksum of protocols encapsulated in IP packets.
+pub trait VerifyChecksum<'a> {
+    /// Verifies the checksum of the encapsulated protocol.
     ///
-    /// Takes the pseudo header into account.
-    #[inline]
-    fn verify_transport_checksum(
-        bytes: &[u8],
-        pseudo: Option<(&[u8], &[u8], u8)>,
-    ) -> Result<(), &'static str> {
-        let (src, dest, protocol) =
-            pseudo.ok_or("Checksum cannot be verified without a pseudo header.")?;
+    /// # Returns
+    ///
+    /// A result indicating success or failure based on the checksum validation.
+    fn verify_checksum(&self) -> Result<(), &'static str>;
+}
 
-        let pseudo_sum = match src.len() {
-            4 => {
-                let src: [u8; 4] = src.try_into().unwrap(); // won't panic
-                let dest: [u8; 4] = dest.try_into().unwrap(); // won't panic
-                pseudo_header(&src, &dest, protocol, bytes.len())
-            }
-            16 => {
-                let src: [u8; 16] = src.try_into().unwrap(); // won't panic
-                let dest: [u8; 16] = dest.try_into().unwrap(); // won't panic
-                pseudo_header(&src, &dest, protocol, bytes.len())
-            }
-            _ => return Err("Unsupported IP address length for pseudo header."),
+impl<'a> VerifyChecksum<'a> for IPv4Reader<'a> {
+    /// Verifies the checksum of an encapsulated protocol in an IPv4 packet.
+    ///
+    /// Computes the pseudo-header checksum and verifies it with the encapsulated payload.
+    #[inline]
+    fn verify_checksum(&self) -> Result<(), &'static str> {
+        let src: [u8; 4] = self.src_ip().try_into().unwrap(); // Won't panic.
+        let dest: [u8; 4] = self.dest_ip().try_into().unwrap(); // Won't panic.
+        let protocol = self.protocol();
+
+        let accumulator = if IpProtocol::from(protocol) == IpProtocol::Icmpv4 {
+            0
+        } else {
+            pseudo_header(&src, &dest, protocol, self.payload().len())
         };
 
-        if !verify_internet_checksum(bytes, pseudo_sum) {
-            return Err(match IpProtocol::from(protocol) {
-                IpProtocol::Tcp => "TCP checksum is invalid.",
-                IpProtocol::Udp => "UDP checksum is invalid.",
-                IpProtocol::Icmpv6 => "ICMPv6 checksum is invalid.",
-                _ => "Unsupported protocol checksum.",
-            });
+        if !verify_internet_checksum(self.payload(), accumulator) {
+            return Err("Encapsulated checksum is invalid.");
         }
 
         Ok(())
     }
+}
 
-    /// Returns the total length of all headers.
+impl<'a> VerifyChecksum<'a> for IPv6Reader<'a> {
+    /// Verifies the checksum of an encapsulated protocol in an IPv6 packet.
+    ///
+    /// Computes the pseudo-header checksum and verifies it with the encapsulated payload.
     #[inline]
-    pub fn header_len(&self) -> usize {
-        let mut len = 0;
+    fn verify_checksum(&self) -> Result<(), &'static str> {
+        let src: [u8; 16] = self.src_addr().try_into().unwrap(); // Won't panic.
+        let dest: [u8; 16] = self.dest_addr().try_into().unwrap(); // Won't panic.
 
-        if let Some(ethernet) = &self.ethernet {
-            len += ethernet.header_len();
+        let accumulator = pseudo_header(&src, &dest, self.next_header(), self.payload().len());
+
+        if !verify_internet_checksum(self.payload(), accumulator) {
+            return Err("Encapsulated checksum is invalid.");
         }
 
-        if let Some(arp) = &self.arp {
-            len += arp.header_len();
-        }
-
-        if let Some(ipv4) = &self.ipv4 {
-            len += ipv4.header_len();
-        }
-
-        if let Some(ipv6) = &self.ipv6 {
-            len += ipv6.header_len();
-        }
-
-        if let Some(tcp) = &self.tcp {
-            len += tcp.header_len();
-        }
-
-        if let Some(udp) = &self.udp {
-            len += udp.header_len();
-        }
-
-        if let Some(icmpv4) = &self.icmpv4 {
-            len += icmpv4.header_len();
-        }
-
-        if let Some(icmpv6) = &self.icmpv6 {
-            len += icmpv6.header_len();
-        }
-
-        len
+        Ok(())
     }
 }
 
@@ -533,6 +533,8 @@ mod tests {
 
         // Parse the packet.
         let parser = PacketParser::parse(&packet);
+
+        println!("{:?}", parser);
 
         // Ensure the parser succeeds.
         assert!(parser.is_ok());

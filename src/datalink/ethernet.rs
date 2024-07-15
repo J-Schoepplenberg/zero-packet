@@ -270,7 +270,7 @@ impl<'a> EthernetReader<'a> {
     }
 }
 
-impl<'a> fmt::Debug for EthernetReader<'a> {
+impl fmt::Debug for EthernetReader<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d_buf = [0u8; 18];
         let d_len = bytes_to_mac(self.dest_mac(), &mut d_buf);

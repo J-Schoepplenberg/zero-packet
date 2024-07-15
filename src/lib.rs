@@ -75,20 +75,20 @@
 
     // Now it is as easy as this.
     if let Some(ethernet) = parsed.ethernet {
-        let ethertype = ethernet.get_ethertype();
+        let ethertype = ethernet.ethertype();
         // ...
     }
 
     // Or this.
     if let Some(ipv4) = parsed.ipv4 {
-        let src_ip = ipv4.get_src_ip();
+        let src_ip = ipv4.src_ip();
         // ...
     }
 
     // Alternatively, just parse headers directly manually.
     // By adjusting the index of the slice you can find different headers.
-    if let Some(tcp) = TcpParser::new(&packet)? {
-        let src_port = tcp.get_src_port();
+    if let Some(tcp) = TcpReader::new(&packet)? {
+        let src_port = tcp.src_port();
         // ...
     }
 
@@ -96,7 +96,7 @@
 */
 
 // Disables the standard library.
-#![no_std]
+//#![no_std]
 
 // Statically guarantees that the code cannot be unsafe.
 #![forbid(unsafe_code)]

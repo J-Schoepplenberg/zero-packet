@@ -240,9 +240,15 @@ impl<'a> IPv4Reader<'a> {
     pub fn payload(&self) -> &'a [u8] {
         &self.bytes[self.header_len()..]
     }
+
+    /// Verifies the checksum field.
+    #[inline]
+    pub fn valid_checksum(&self) -> bool {
+        internet_checksum(self.header(), 0) == 0
+    }
 }
 
-impl<'a> fmt::Debug for IPv4Reader<'a> {
+impl fmt::Debug for IPv4Reader<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let src_ip = self.src_ip();
         let dest_ip = self.dest_ip();
