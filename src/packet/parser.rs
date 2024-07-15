@@ -534,8 +534,6 @@ mod tests {
         // Parse the packet.
         let parser = PacketParser::parse(&packet);
 
-        println!("{:?}", parser);
-
         // Ensure the parser succeeds.
         assert!(parser.is_ok());
 

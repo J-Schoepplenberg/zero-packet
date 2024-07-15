@@ -96,7 +96,7 @@
 */
 
 // Disables the standard library.
-//#![no_std]
+#![no_std]
 
 // Statically guarantees that the code cannot be unsafe.
 #![forbid(unsafe_code)]
