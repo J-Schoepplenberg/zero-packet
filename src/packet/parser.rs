@@ -564,4 +564,46 @@ mod tests {
         assert_eq!(icmpv6.icmp_type(), 135);
         assert_eq!(icmpv6.icmp_code(), 0);
     }
+
+    #[test]
+    fn test_ipv6_udp_payload() {
+        // UDP packet (Ethernet + IPv6 + UDP + Payload).
+        let packet = [
+            0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
+            0x60, 0x00, 0x00, 0x00, 0x00, 0x14, 0x11, 0x03, 0x3f, 0xfe, 0x05, 0x07, 0x00, 0x00,
+            0x00, 0x01, 0x02, 0x00, 0x86, 0xff, 0xfe, 0x05, 0x80, 0xda, 0x3f, 0xfe, 0x05, 0x01,
+            0x04, 0x10, 0x00, 0x00, 0x02, 0xc0, 0xdf, 0xff, 0xfe, 0x47, 0x03, 0x3e, 0xa0, 0x75,
+            0x82, 0xa1, 0x00, 0x14, 0x81, 0x13, 0x07, 0x03, 0x00, 0x00, 0xf9, 0xc8, 0xe7, 0x36,
+            0xef, 0x5d, 0x0a, 0x00,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected fields.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+        assert!(unwrapped.udp.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmpv4.is_none());
+        assert!(unwrapped.icmpv6.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.tcp.is_none());
+
+        // Unwrap UDP header.
+        let udp = unwrapped.udp.unwrap();
+
+        // Ensure payload is correct.
+        assert_eq!(
+            udp.payload(),
+            [0x07, 0x03, 0x00, 0x00, 0xf9, 0xc8, 0xe7, 0x36, 0xef, 0x5d, 0x0a, 0x00]
+        );
+    }
 }
