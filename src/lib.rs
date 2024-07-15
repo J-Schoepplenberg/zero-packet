@@ -32,7 +32,7 @@
 
     ```toml
     [dependencies]
-    zero-packet = "0.0.8"
+    zero-packet = "0.0.9"
     ```
 
     ## PacketBuilder
@@ -47,7 +47,9 @@
     // Some random payload (11 bytes).
     let payload = b"Hello, UDP!";
 
-    // PacketBuilder which holds a mutable reference to the byte slice.
+    // PacketBuilder is a zero-copy packet builder.
+    // Using the typestate pattern, a state machine is implemented using the type system.
+    // The state machine ensures that the package is built correctly.
     let mut packet_builder = PacketBuilder::new(&mut packet);
 
     // Sets Ethernet, IPv4 and UDP header fields.

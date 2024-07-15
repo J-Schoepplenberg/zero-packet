@@ -70,7 +70,7 @@ impl<'a> PacketParser<'a> {
                 }
 
                 parser.ipv4 = Some(ipv4);
-            },
+            }
             EtherType::Ipv6 => {
                 let ipv6 = IPv6Reader::parse(payload)?;
 
@@ -87,7 +87,7 @@ impl<'a> PacketParser<'a> {
                 }
 
                 parser.ipv6 = Some(ipv6);
-            },
+            }
             EtherType::Unknown(_) => return Err("Unknown or unsupported EtherType"),
         }
 
@@ -155,7 +155,6 @@ impl<'a> Parse<'a> for IPv4Reader<'a> {
             return Err("IPv4 version field is invalid. Expected version 4.");
         }
 
-        let total_length = reader.total_length();
         let header_len = reader.header_len();
         let packet_len = bytes.len();
 
@@ -167,7 +166,7 @@ impl<'a> Parse<'a> for IPv4Reader<'a> {
             return Err("IPv4 header length is invalid. Indicated header length is too long.");
         }
 
-        if packet_len != total_length as usize {
+        if packet_len != reader.total_length() as usize {
             return Err("IPv4 total length field is invalid. Does not match actual length.");
         }
 
@@ -183,7 +182,7 @@ impl<'a> Parse<'a> for IPv6Reader<'a> {
     /// Parses an IPv6 packet from a byte slice.
     ///
     /// Validates the IPv6 version field.
-    /// 
+    ///
     /// Note: IPv6 does not have a checksum field.
     #[inline]
     fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
@@ -225,11 +224,7 @@ impl<'a> Parse<'a> for UdpReader<'a> {
     fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let reader = UdpReader::new(bytes)?;
 
-        let header_len = reader.header_len();
-        let payload_len = reader.payload().len();
-        let length_field = reader.length() as usize;
-
-        if length_field != header_len + payload_len {
+        if reader.length() as usize != reader.header_len() + reader.payload().len() {
             return Err("UDP length field is invalid. Does not match actual length.");
         }
 
@@ -293,13 +288,13 @@ impl<'a> VerifyChecksum<'a> for IPv4Reader<'a> {
         let dest: [u8; 4] = self.dest_ip().try_into().unwrap(); // Won't panic.
         let protocol = self.protocol();
 
-        let accumulator = if IpProtocol::from(protocol) == IpProtocol::Icmpv4 {
+        let sum = if IpProtocol::from(protocol) == IpProtocol::Icmpv4 {
             0
         } else {
             pseudo_header(&src, &dest, protocol, self.payload().len())
         };
 
-        if !verify_internet_checksum(self.payload(), accumulator) {
+        if !verify_internet_checksum(self.payload(), sum) {
             return Err("Encapsulated checksum is invalid.");
         }
 
@@ -316,9 +311,9 @@ impl<'a> VerifyChecksum<'a> for IPv6Reader<'a> {
         let src: [u8; 16] = self.src_addr().try_into().unwrap(); // Won't panic.
         let dest: [u8; 16] = self.dest_addr().try_into().unwrap(); // Won't panic.
 
-        let accumulator = pseudo_header(&src, &dest, self.next_header(), self.payload().len());
+        let sum = pseudo_header(&src, &dest, self.next_header(), self.payload().len());
 
-        if !verify_internet_checksum(self.payload(), accumulator) {
+        if !verify_internet_checksum(self.payload(), sum) {
             return Err("Encapsulated checksum is invalid.");
         }
 
