@@ -32,17 +32,13 @@ pub struct PacketParser<'a> {
 
 impl<'a> PacketParser<'a> {
     /// Parses a raw Ethernet frame.
-    ///
-    /// Is strict about what input it accepts.
     #[inline]
     pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let ethernet = EthernetReader::parse(bytes)?;
-        let ethernet_len = ethernet.header_len();
-        let payload = &bytes[ethernet_len..];
-        let ethertype = ethernet.ethertype();
+        let payload = &bytes[ethernet.header_len()..];
 
         let mut parser = PacketParser {
-            ethernet: Some(ethernet),
+            ethernet: None,
             arp: None,
             ipv4: None,
             ipv6: None,
@@ -52,44 +48,36 @@ impl<'a> PacketParser<'a> {
             icmpv6: None,
         };
 
-        match EtherType::from(ethertype) {
+        match EtherType::from(ethernet.ethertype()) {
             EtherType::Arp => parser.arp = Some(ArpReader::parse(payload)?),
             EtherType::Ipv4 => {
                 let ipv4 = IPv4Reader::parse(payload)?;
-
-                ipv4.verify_checksum()?;
-
-                let header_len = ethernet_len + ipv4.header_len();
-                let ip_payload = &bytes[header_len..];
-
+                let payload = ipv4.payload();
                 match IpProtocol::from(ipv4.protocol()) {
-                    IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(ip_payload)?),
-                    IpProtocol::Udp => parser.udp = Some(UdpReader::parse(ip_payload)?),
-                    IpProtocol::Icmpv4 => parser.icmpv4 = Some(Icmpv4Reader::parse(ip_payload)?),
+                    IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(payload)?),
+                    IpProtocol::Udp => parser.udp = Some(UdpReader::parse(payload)?),
+                    IpProtocol::Icmpv4 => parser.icmpv4 = Some(Icmpv4Reader::parse(payload)?),
                     _ => return Err("Unknown IPv4 Protocol."),
                 }
-
+                ipv4.verify_checksum()?;
                 parser.ipv4 = Some(ipv4);
             }
             EtherType::Ipv6 => {
                 let ipv6 = IPv6Reader::parse(payload)?;
-
-                ipv6.verify_checksum()?;
-
-                let header_len = ethernet_len + ipv6.header_len();
-                let ip_payload = &bytes[header_len..];
-
+                let payload = ipv6.payload();
                 match IpProtocol::from(ipv6.next_header()) {
-                    IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(ip_payload)?),
-                    IpProtocol::Udp => parser.udp = Some(UdpReader::parse(ip_payload)?),
-                    IpProtocol::Icmpv6 => parser.icmpv6 = Some(Icmpv6Reader::parse(ip_payload)?),
+                    IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(payload)?),
+                    IpProtocol::Udp => parser.udp = Some(UdpReader::parse(payload)?),
+                    IpProtocol::Icmpv6 => parser.icmpv6 = Some(Icmpv6Reader::parse(payload)?),
                     _ => return Err("Unknown IPv6 Protocol."),
                 }
-
+                ipv6.verify_checksum()?;
                 parser.ipv6 = Some(ipv6);
             }
             EtherType::Unknown(_) => return Err("Unknown or unsupported EtherType"),
         }
+
+        parser.ethernet = Some(ethernet);
 
         Ok(parser)
     }

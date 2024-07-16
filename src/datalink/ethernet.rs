@@ -153,49 +153,41 @@ impl<'a> EthernetReader<'a> {
     /// Depending on the presence of VLAN tagging, the header length may vary.
     #[inline]
     pub fn calculate_header_len(bytes: &[u8]) -> Result<usize, &'static str> {
-        let mut header_len = ETHERNET_MIN_HEADER_LENGTH;
-
-        let ethertype = ((bytes[12] as u16) << 8) | (bytes[13] as u16);
-
-        match ethertype {
+        // EtherType field.
+        match ((bytes[12] as u16) << 8) | (bytes[13] as u16) {
             ETHERTYPE_VLAN => {
                 if bytes.len() < ETHERNET_MIN_HEADER_LENGTH + VLAN_TAG_LENGTH {
                     return Err("Slice is too short to contain VLAN tagging.");
                 }
 
-                header_len += VLAN_TAG_LENGTH;
+                Ok(ETHERNET_MIN_HEADER_LENGTH + VLAN_TAG_LENGTH)
             }
             ETHERTYPE_QINQ => {
                 if bytes.len() < ETHERNET_MIN_HEADER_LENGTH + 2 * VLAN_TAG_LENGTH {
                     return Err("Slice is too short to contain double VLAN tagging.");
                 }
 
-                let next_tpid = ((bytes[16] as u16) << 8) | (bytes[17] as u16);
-
-                if next_tpid != ETHERTYPE_VLAN {
+                // Next EtherType field.
+                if ((bytes[16] as u16) << 8) | (bytes[17] as u16) != ETHERTYPE_VLAN {
                     return Err("Invalid double VLAN tag.");
                 }
 
-                header_len += 2 * VLAN_TAG_LENGTH;
+                Ok(ETHERNET_MIN_HEADER_LENGTH + 2 * VLAN_TAG_LENGTH)
             }
-            _ => {}
+            _ => Ok(ETHERNET_MIN_HEADER_LENGTH),
         }
-
-        Ok(header_len)
     }
 
     /// Checks if the Ethernet frame is VLAN tagged.
     #[inline]
     pub fn is_vlan_tagged(bytes: &[u8]) -> bool {
-        let ethertype = ((bytes[12] as u16) << 8) | (bytes[13] as u16);
-        ethertype == ETHERTYPE_VLAN
+        ((bytes[12] as u16) << 8) | (bytes[13] as u16) == ETHERTYPE_VLAN
     }
 
     /// Checks if the Ethernet frame is double VLAN tagged (Q-in-Q).
     #[inline]
     pub fn is_vlan_double_tagged(bytes: &[u8]) -> bool {
-        let ethertype = ((bytes[12] as u16) << 8) | (bytes[13] as u16);
-        ethertype == ETHERTYPE_QINQ
+        ((bytes[12] as u16) << 8) | (bytes[13] as u16) == ETHERTYPE_QINQ
     }
 
     /// Returns the destination MAC address field.

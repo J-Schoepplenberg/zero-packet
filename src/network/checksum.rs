@@ -65,12 +65,7 @@ impl PseudoHeader for [u8; 16] {
 /// Sums up the IPv4/v6 pseudo header for the checksum calculation.
 #[inline]
 pub fn pseudo_header<T: PseudoHeader>(src: &T, dest: &T, protocol: u8, length: usize) -> u32 {
-    let mut pseudo_header = 0u32;
-    pseudo_header += src.sum();
-    pseudo_header += dest.sum();
-    pseudo_header += u32::from(protocol);
-    pseudo_header += length as u32;
-    pseudo_header
+    src.sum() + dest.sum() + u32::from(protocol) + length as u32
 }
 
 #[cfg(test)]
