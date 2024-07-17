@@ -66,6 +66,9 @@ pub struct Icmpv6HeaderState;
 /// The creation of new `PacketBuilder` instances happens on the stack.
 /// These stack allocations are very cheap and most likely optimized away by the compiler.
 /// The state types are zero-sized types (ZSTs) and don't consume any memory.
+/// 
+/// The builder does not stop you from choosing bogus values for the fields.
+/// You may construct completely arbitrary and highly manipulative packets.
 pub struct PacketBuilder<'a, State> {
     bytes: &'a mut [u8],
     header_len: usize,

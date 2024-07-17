@@ -31,7 +31,11 @@ pub struct PacketParser<'a> {
 }
 
 impl<'a> PacketParser<'a> {
-    /// Parses a raw Ethernet frame.
+    /// Parses a raw packet given in bytes.
+    /// 
+    /// Determines the encapsulated protocols and parses them.
+    /// 
+    /// May fail if validation of the fields fails.
     #[inline]
     pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let ethernet = EthernetReader::parse(bytes)?;
@@ -57,7 +61,7 @@ impl<'a> PacketParser<'a> {
                     IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(payload)?),
                     IpProtocol::Udp => parser.udp = Some(UdpReader::parse(payload)?),
                     IpProtocol::Icmpv4 => parser.icmpv4 = Some(Icmpv4Reader::parse(payload)?),
-                    _ => return Err("Unknown IPv4 Protocol."),
+                    _ => return Err("Unknown IPv4 protocol."),
                 }
                 ipv4.verify_checksum()?;
                 parser.ipv4 = Some(ipv4);
@@ -69,7 +73,7 @@ impl<'a> PacketParser<'a> {
                     IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(payload)?),
                     IpProtocol::Udp => parser.udp = Some(UdpReader::parse(payload)?),
                     IpProtocol::Icmpv6 => parser.icmpv6 = Some(Icmpv6Reader::parse(payload)?),
-                    _ => return Err("Unknown IPv6 Protocol."),
+                    _ => return Err("Unknown IPv6 next header."),
                 }
                 ipv6.verify_checksum()?;
                 parser.ipv6 = Some(ipv6);
@@ -90,14 +94,6 @@ pub trait Parse<'a>: Sized {
     /// Checks certain fields for validity.
     ///
     /// May fail if any of the fields are deemed invalid.
-    ///
-    /// # Arguments
-    ///
-    /// * `bytes` - A slice containing the raw bytes of the protocol header.
-    ///
-    /// # Returns
-    ///
-    /// A result containing the parsed protocol header on success, or a static string error message on failure.
     fn parse(bytes: &'a [u8]) -> Result<Self, &'static str>;
 }
 
@@ -256,10 +252,6 @@ impl<'a> Parse<'a> for Icmpv6Reader<'a> {
 /// Trait to verify the checksum of protocols encapsulated in IP packets.
 pub trait VerifyChecksum<'a> {
     /// Verifies the checksum of the encapsulated protocol.
-    ///
-    /// # Returns
-    ///
-    /// A result indicating success or failure based on the checksum validation.
     fn verify_checksum(&self) -> Result<(), &'static str>;
 }
 
