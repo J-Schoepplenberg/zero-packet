@@ -64,8 +64,8 @@ impl<'a> PacketParser<'a> {
             }
             EtherType::Ipv6 => {
                 let ipv6 = IPv6Reader::parse(payload)?;
-                let payload = ipv6.payload();
-                match IpProtocol::from(ipv6.next_header()) {
+                let payload = ipv6.upper_layer_payload();
+                match IpProtocol::from(ipv6.final_next_header()) {
                     IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(payload)?),
                     IpProtocol::Udp => parser.udp = Some(UdpReader::parse(payload)?),
                     IpProtocol::Icmpv6 => parser.icmpv6 = Some(Icmpv6Reader::parse(payload)?),
@@ -143,18 +143,15 @@ impl<'a> Parse<'a> for IPv4Reader<'a> {
             return Err("IPv4 version field is invalid. Expected version 4.");
         }
 
-        let header_len = reader.header_len();
-        let packet_len = bytes.len();
-
-        if header_len < IPV4_MIN_HEADER_LENGTH {
+        if reader.header_len() < IPV4_MIN_HEADER_LENGTH {
             return Err("IPv4 IHL field is invalid. Indicated header length is too short.");
         }
 
-        if packet_len < header_len {
+        if bytes.len() < reader.header_len() {
             return Err("IPv4 header length is invalid. Indicated header length is too long.");
         }
 
-        if packet_len != reader.total_length() as usize {
+        if bytes.len() != reader.total_length() as usize {
             return Err("IPv4 total length field is invalid. Does not match actual length.");
         }
 
@@ -276,6 +273,7 @@ impl<'a> VerifyChecksum<'a> for IPv4Reader<'a> {
         let dest: [u8; 4] = self.dest_ip().try_into().unwrap(); // Won't panic.
         let protocol = self.protocol();
 
+        // ICMPv4 does not use a pseudo-header for checksum calculation.
         let sum = if IpProtocol::from(protocol) == IpProtocol::Icmpv4 {
             0
         } else {
@@ -299,9 +297,18 @@ impl<'a> VerifyChecksum<'a> for IPv6Reader<'a> {
         let src: [u8; 16] = self.src_addr().try_into().unwrap(); // Won't panic.
         let dest: [u8; 16] = self.dest_addr().try_into().unwrap(); // Won't panic.
 
-        let sum = pseudo_header(&src, &dest, self.next_header(), self.payload().len());
+        // We use the pseudo header of the primary IPv6 header.
+        // We ignore the extension headers in-between.
+        // This may fail if there are multiple IPv6 headers in the packet (e.g. IPv6-in-IPv6).
+        // In that case one would need to use the innermost IPv6 header for the pseudo header.
+        let sum = pseudo_header(
+            &src,
+            &dest,
+            self.final_next_header(),
+            self.upper_layer_payload().len(),
+        );
 
-        if !verify_internet_checksum(self.payload(), sum) {
+        if !verify_internet_checksum(self.upper_layer_payload(), sum) {
             return Err("Encapsulated checksum is invalid.");
         }
 
@@ -586,5 +593,55 @@ mod tests {
             udp.payload(),
             [0x07, 0x03, 0x00, 0x00, 0xf9, 0xc8, 0xe7, 0x36, 0xef, 0x5d, 0x0a, 0x00]
         );
+    }
+
+    #[test]
+    fn test_ipv6_routing_extension_header() {
+        // IPv6 with routing extension header (Ethernet + IPv6 + Routing + TCP).
+        let packet = [
+            0x86, 0x93, 0x23, 0xd3, 0x37, 0x8e, 0x22, 0x1a, 0x95, 0xd6, 0x7a, 0x23, 0x86, 0xdd,
+            0x60, 0x0f, 0xbb, 0x74, 0x00, 0x88, 0x2b, 0x3f, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xfc, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x06, 0x06,
+            0x04, 0x02, 0x02, 0x00, 0x00, 0x00, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xfc, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x1f, 0x90,
+            0xa9, 0xa0, 0xba, 0x31, 0x1e, 0x8d, 0x02, 0x1b, 0x63, 0x8d, 0xa0, 0x12, 0x70, 0xf8,
+            0x8a, 0xf5, 0x00, 0x00, 0x02, 0x04, 0x07, 0x94, 0x04, 0x02, 0x08, 0x0a, 0x80, 0x1d,
+            0xa5, 0x22, 0x80, 0x1d, 0xa5, 0x22, 0x01, 0x03, 0x03, 0x07,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected fields.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+        assert!(unwrapped.tcp.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmpv4.is_none());
+        assert!(unwrapped.icmpv6.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.udp.is_none());
+
+        // Unwrap IPv6 header.
+        let ipv6 = unwrapped.ipv6.unwrap();
+
+        // Ensure extension headers are present.
+        assert!(ipv6.extension_headers.is_some());
+
+        // Unwrap extension headers.
+        let extension_headers = ipv6.extension_headers.unwrap();
+
+        // Ensure routing extension header is present.
+        assert!(extension_headers.routing.is_some());
     }
 }

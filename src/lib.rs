@@ -10,11 +10,14 @@
     ## Supported protocols
 
     - Ethernet II
-        - VLAN tagging
-        - Double tagging
+        - Optional
+            - VLAN tagging
+            - Double tagging
     - ARP
     - IPv4
     - IPv6
+        - Extension headers
+            - Routing
     - ICMPv4
     - ICMPv6
     - TCP

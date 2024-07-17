@@ -1,5 +1,15 @@
-use crate::misc::bytes_to_ipv6;
+use super::extensions::headers::ExtensionHeaders;
+use crate::misc::{bytes_to_ipv6, NextHeader};
 use core::{fmt, str::from_utf8};
+
+// Note:
+// The IPv6 specification is absolutely weird. Packets can chain extension headers together.
+// The next header field points to the next extension header in the chain.
+// The last extension header in the chain points to the actual encapsulated payload (e.g. TCP, UDP).
+// You may also encounter packets with multiple IPv6 headers (e.g. IPv6-in-IPv6).
+// In that case you have to use the last IPv6 header for the pseudo header in the checksum calculation.
+// Using the outer IPv6 headers will result in a wrong checksum.
+// It seems like there is no actual limit to the number of headers... we won't parse this madness (yet?).
 
 /// The length of an IPv6 header in bytes.
 pub const IPV6_HEADER_LEN: usize = 40;
@@ -132,8 +142,12 @@ impl<'a> IPv6Writer<'a> {
 }
 
 /// Reads IPv6 header fields.
+///
+/// May contain extension headers.
 pub struct IPv6Reader<'a> {
     pub bytes: &'a [u8],
+    pub extension_headers: Option<ExtensionHeaders<'a>>,
+    pub extension_headers_len: usize,
 }
 
 impl<'a> IPv6Reader<'a> {
@@ -144,7 +158,21 @@ impl<'a> IPv6Reader<'a> {
             return Err("Slice is too short to contain an IPv6 header.");
         }
 
-        Ok(Self { bytes })
+        let mut reader = Self {
+            bytes,
+            extension_headers: None,
+            extension_headers_len: 0,
+        };
+
+        // Constructs a struct containing all extension headers, if there are any.
+        let extension_headers = ExtensionHeaders::new(reader.payload(), reader.next_header())?;
+
+        if let Some(extension_headers) = extension_headers {
+            reader.extension_headers_len = extension_headers.total_header_len();
+            reader.extension_headers = Some(extension_headers);
+        }
+
+        Ok(reader)
     }
 
     /// Returns the version field.
@@ -191,6 +219,36 @@ impl<'a> IPv6Reader<'a> {
         self.bytes[6]
     }
 
+    /// Returns the next header field of the final extension header.
+    ///
+    /// The extension headers are linked in a chain through the next header field.
+    /// 
+    /// If there are no extension headers, the next header field of the IPv6 header is returned.
+    #[inline]
+    pub fn final_next_header(&self) -> u8 {
+        // Start with the next header field in the most outer IPv6 header.
+        let mut next_header = self.next_header();
+
+        // Loop through the chain of extension headers.
+        if let Some(extension_headers) = &self.extension_headers {
+            loop {
+                match NextHeader::from(next_header) {
+                    NextHeader::Routing => {
+                        if let Some(routing) = &extension_headers.routing {
+                            next_header = routing.next_header();
+                        } else {
+                            break;
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
+
+        // Return the final next header in the chain.
+        next_header
+    }
+
     /// Returns the hop limit field.
     ///
     /// Replaces the time-to-live field in IPv4.
@@ -220,6 +278,8 @@ impl<'a> IPv6Reader<'a> {
     }
 
     /// Returns the actual header length in bytes.
+    ///
+    /// Does not include extension headers.
     #[inline]
     pub fn header_len(&self) -> usize {
         IPV6_HEADER_LEN
@@ -232,9 +292,19 @@ impl<'a> IPv6Reader<'a> {
     }
 
     /// Returns a reference to the payload.
+    ///
+    /// May contain extension headers.
     #[inline]
     pub fn payload(&self) -> &'a [u8] {
         &self.bytes[self.header_len()..]
+    }
+
+    /// Returns the payload after the extension headers.
+    ///
+    /// This is the encapsulated protocol (e.g. TCP, UDP).
+    #[inline]
+    pub fn upper_layer_payload(&self) -> &'a [u8] {
+        &self.bytes[self.header_len() + self.extension_headers_len..]
     }
 }
 
@@ -255,6 +325,8 @@ impl fmt::Debug for IPv6Reader<'_> {
             .field("hop_limit", &self.hop_limit())
             .field("src_addr", &s_hex)
             .field("dest_addr", &d_hex)
+            .field("extension_headers", &self.extension_headers)
+            .field("extension_headers_len", &self.extension_headers_len)
             .finish()
     }
 }
