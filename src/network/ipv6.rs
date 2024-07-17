@@ -2,15 +2,6 @@ use super::extensions::headers::ExtensionHeaders;
 use crate::misc::{bytes_to_ipv6, NextHeader};
 use core::{fmt, str::from_utf8};
 
-// Note:
-// The IPv6 specification is absolutely weird. Packets can chain extension headers together.
-// The next header field points to the next extension header in the chain.
-// The last extension header in the chain points to the actual encapsulated payload (e.g. TCP, UDP).
-// You may also encounter packets with multiple IPv6 headers (e.g. IPv6-in-IPv6).
-// In that case you have to use the last IPv6 header for the pseudo header in the checksum calculation.
-// Using the outer IPv6 headers will result in a wrong checksum.
-// It seems like there is no actual limit to the number of headers... we won't parse this madness (yet?).
-
 /// The length of an IPv6 header in bytes.
 pub const IPV6_HEADER_LEN: usize = 40;
 
@@ -222,7 +213,7 @@ impl<'a> IPv6Reader<'a> {
     /// Returns the next header field of the final extension header.
     ///
     /// The extension headers are linked in a chain through the next header field.
-    /// 
+    ///
     /// If there are no extension headers, the next header field of the IPv6 header is returned.
     #[inline]
     pub fn final_next_header(&self) -> u8 {

@@ -1,11 +1,21 @@
 use super::routing::RoutingHeaderReader;
 use crate::misc::NextHeader;
 
+// Note:
+// The IPv6 specification is weird. Packets can chain extension headers together.
+// The next header field points to the next extension header in the chain.
+// The last extension header in the chain points to the actual encapsulated payload (e.g. TCP).
+// You may also encounter packets with multiple IPv6 headers (e.g. IPv6-in-IPv6).
+// In that case you have to use the last IPv6 header for the pseudo header checksum.
+// Using the outer IPv6 headers will result in a wrong checksum calculation.
+// Also, it seems like there is no actual limit to the number of headers:
+// RFC 6564: "There can be an arbitrary number of extension headers."
+
 /// Contains all present extension headers in an IPv6 packet.
 /// 
-/// Each extension header is optional and can appear only once.
+/// Each extension header is optional and should appear only once.
 /// 
-/// Except the Destination Options header, which can occur twice.
+/// Except the Destination Options header, which may occur twice.
 #[derive(Debug)]
 pub struct ExtensionHeaders<'a> {
     pub routing: Option<RoutingHeaderReader<'a>>,
