@@ -29,22 +29,29 @@ impl<'a> ExtensionHeaders<'a> {
     /// Thus, we need to loop through them all to run down the chain.
     #[inline]
     pub fn new(bytes: &'a [u8], next_header: u8) -> Result<Option<Self>, &'static str> {
-        let mut routing = None;
         let mut next_header = next_header;
+
+        let mut headers = Self {
+            routing: None,
+        };
 
         loop {
             match NextHeader::from(next_header) {
                 NextHeader::Routing => {
                     let reader = RoutingHeaderReader::new(bytes)?;
                     next_header = reader.next_header();
-                    routing = Some(reader);
+                    headers.routing = Some(reader);
                 }
                 // We escape the loop if we don't recognize the next header.
                 _ => break,
             }
         }
 
-        Ok(Some(Self { routing }))
+        if headers.routing.is_none() {
+            return Ok(None);
+        }
+
+        Ok(Some(headers))
     }
 
     /// Returns the total length of all present extension headers.
