@@ -238,6 +238,13 @@ impl<'a> IPv6Reader<'a> {
                             break;
                         }
                     }
+                    NextHeader::Fragment => {
+                        if let Some(fragment) = &extension_headers.fragment {
+                            next_header = fragment.next_header();
+                        } else {
+                            break;
+                        }
+                    }
                     NextHeader::Destination => {
                         if let Some(destination) = &extension_headers.destination {
                             next_header = destination.next_header();

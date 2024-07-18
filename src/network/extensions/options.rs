@@ -1,5 +1,6 @@
 use core::fmt;
 
+/// Minimum length of an Options extension header in bytes.
 pub const OPTIONS_HEADER_MIN_LEN: usize = 8;
 
 /// Writes an Options extension header fields.

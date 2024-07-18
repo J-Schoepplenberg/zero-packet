@@ -1,6 +1,6 @@
 use core::fmt;
 
-/// The minimum length of the Routing extension header.
+/// The minimum length of a Routing extension header.
 pub const ROUTING_HEADER_MIN_LEN: usize = 8;
 
 /// Writes the Routing extension header fields.

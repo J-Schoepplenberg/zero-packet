@@ -1,4 +1,6 @@
-use super::{options::OptionsHeaderReader, routing::RoutingHeaderReader};
+use super::{
+    fragment::FragmentHeaderReader, options::OptionsHeaderReader, routing::RoutingHeaderReader,
+};
 use crate::misc::NextHeader;
 
 // Note:
@@ -20,6 +22,7 @@ use crate::misc::NextHeader;
 pub struct ExtensionHeaders<'a> {
     pub hop_by_hop: Option<OptionsHeaderReader<'a>>,
     pub routing: Option<RoutingHeaderReader<'a>>,
+    pub fragment: Option<FragmentHeaderReader<'a>>,
     pub destination: Option<OptionsHeaderReader<'a>>,
 }
 
@@ -37,6 +40,7 @@ impl<'a> ExtensionHeaders<'a> {
         let mut headers = Self {
             hop_by_hop: None,
             routing: None,
+            fragment: None,
             destination: None,
         };
 
@@ -54,6 +58,12 @@ impl<'a> ExtensionHeaders<'a> {
                     bytes = reader.payload()?;
                     headers.routing = Some(reader);
                 }
+                NextHeader::Fragment => {
+                    let reader = FragmentHeaderReader::new(bytes)?;
+                    next_header = reader.next_header();
+                    bytes = reader.payload();
+                    headers.fragment = Some(reader);
+                }
                 NextHeader::Destination => {
                     let reader = OptionsHeaderReader::new(bytes)?;
                     next_header = reader.next_header();
@@ -67,6 +77,7 @@ impl<'a> ExtensionHeaders<'a> {
 
         if headers.hop_by_hop.is_none()
             && headers.routing.is_none()
+            && headers.fragment.is_none()
             && headers.destination.is_none()
         {
             return Ok(None);
@@ -86,6 +97,10 @@ impl<'a> ExtensionHeaders<'a> {
 
         if let Some(routing) = &self.routing {
             total_len += routing.header_len();
+        }
+
+        if let Some(fragment) = &self.fragment {
+            total_len += fragment.header_len();
         }
 
         if let Some(destination) = &self.destination {
