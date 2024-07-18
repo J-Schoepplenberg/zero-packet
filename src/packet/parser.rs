@@ -32,9 +32,9 @@ pub struct PacketParser<'a> {
 
 impl<'a> PacketParser<'a> {
     /// Parses a raw packet given in bytes.
-    /// 
+    ///
     /// Determines the encapsulated protocols and parses them.
-    /// 
+    ///
     /// May fail if validation of the fields fails.
     #[inline]
     pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_icmpv4_echo_response() {
-        // ICMP echo response (Ethernet + IPv4 + ICMP).
+        // ICMP echo response (Ethernet II + IPv4 + ICMP).
         let packet = [
             0x08, 0x00, 0x20, 0x86, 0x35, 0x4b, 0x00, 0xe0, 0xf7, 0x26, 0x3f, 0xe9, 0x08, 0x00,
             0x45, 0x00, 0x00, 0x54, 0xaa, 0xfb, 0x40, 0x00, 0xfc, 0x01, 0xfa, 0x30, 0x8b, 0x85,
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn test_ipv6_icmpv6() {
-        // ICMPv6 packet (Ethernet + IPv6 + ICMPv6).
+        // ICMPv6 packet (Ethernet II + IPv6 + ICMPv6).
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
             0x60, 0x00, 0x00, 0x00, 0x00, 0x20, 0x3a, 0xff, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00,
@@ -547,7 +547,7 @@ mod tests {
 
     #[test]
     fn test_ipv6_udp_payload() {
-        // UDP packet (Ethernet + IPv6 + UDP + Payload).
+        // UDP packet (Ethernet II + IPv6 + UDP + Payload).
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
             0x60, 0x00, 0x00, 0x00, 0x00, 0x14, 0x11, 0x03, 0x3f, 0xfe, 0x05, 0x07, 0x00, 0x00,
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_ipv6_routing_extension_header() {
-        // IPv6 with routing extension header (Ethernet + IPv6 + Routing + TCP).
+        // IPv6 with routing extension header (Ethernet II + IPv6 + Routing + TCP).
         let packet = [
             0x86, 0x93, 0x23, 0xd3, 0x37, 0x8e, 0x22, 0x1a, 0x95, 0xd6, 0x7a, 0x23, 0x86, 0xdd,
             0x60, 0x0f, 0xbb, 0x74, 0x00, 0x88, 0x2b, 0x3f, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -635,5 +635,95 @@ mod tests {
 
         // Ensure routing extension header is present.
         assert!(extension_headers.routing.is_some());
+    }
+
+    #[test]
+    fn test_ipv6_hop_by_hop_options() {
+        // IPv6 with hop-by-hop options extension header (Ethernet II + IPv6 + Hop-by-Hop + TCP).
+        let packet = [
+            0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
+            0x60, 0x00, 0x00, 0x04, 0x00, 0x1c, 0x00, 0x40, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x06, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x52, 0x0c, 0x00, 0x87, 0x00, 0x00, 0x52, 0x0c,
+            0x00, 0x00, 0x00, 0x00, 0x50, 0x02, 0x40, 0x38, 0xcb, 0x04, 0x00, 0x00,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected fields.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+        assert!(unwrapped.tcp.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmpv4.is_none());
+        assert!(unwrapped.icmpv6.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.udp.is_none());
+
+        // Unwrap IPv6 header.
+        let ipv6 = unwrapped.ipv6.unwrap();
+
+        // Ensure extension headers are present.
+        assert!(ipv6.extension_headers.is_some());
+
+        // Unwrap extension headers.
+        let extension_headers = ipv6.extension_headers.unwrap();
+
+        // Ensure hop-by-hop options extension header is present.
+        assert!(extension_headers.hop_by_hop.is_some());
+    }
+
+    #[test]
+    fn test_ipv6_destination_options() {
+        // IPv6 with destination options extension header (Ethernet II + IPv6 + Destination Options + TCP).
+        let packet = [
+            0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
+            0x60, 0x00, 0x00, 0x05, 0x00, 0x1c, 0x3c, 0x40, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x06, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x52, 0x0d, 0x00, 0x87, 0x00, 0x00, 0x52, 0x0d,
+            0x00, 0x00, 0x00, 0x00, 0x50, 0x02, 0x40, 0x38, 0xcb, 0x02, 0x00, 0x00,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected fields.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+        assert!(unwrapped.tcp.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmpv4.is_none());
+        assert!(unwrapped.icmpv6.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.udp.is_none());
+
+        // Unwrap IPv6 header.
+        let ipv6 = unwrapped.ipv6.unwrap();
+
+        // Ensure extension headers are present.
+        assert!(ipv6.extension_headers.is_some());
+
+        // Unwrap extension headers.
+        let extension_headers = ipv6.extension_headers.unwrap();
+
+        // Ensure hop-by-hop options extension header is present.
+        assert!(extension_headers.destination.is_some());
     }
 }

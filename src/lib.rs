@@ -17,7 +17,9 @@
     - IPv4
     - IPv6
         - Extension headers
+            - Hop-by-Hop Options
             - Routing
+            - Destination Options
     - ICMPv4
     - ICMPv6
     - TCP

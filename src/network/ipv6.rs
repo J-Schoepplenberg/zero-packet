@@ -224,9 +224,23 @@ impl<'a> IPv6Reader<'a> {
         if let Some(extension_headers) = &self.extension_headers {
             loop {
                 match NextHeader::from(next_header) {
+                    NextHeader::HopByHop => {
+                        if let Some(hop_by_hop) = &extension_headers.hop_by_hop {
+                            next_header = hop_by_hop.next_header();
+                        } else {
+                            break;
+                        }
+                    }
                     NextHeader::Routing => {
                         if let Some(routing) = &extension_headers.routing {
                             next_header = routing.next_header();
+                        } else {
+                            break;
+                        }
+                    }
+                    NextHeader::Destination => {
+                        if let Some(destination) = &extension_headers.destination {
+                            next_header = destination.next_header();
                         } else {
                             break;
                         }

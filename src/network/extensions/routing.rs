@@ -19,35 +19,44 @@ impl<'a> RoutingHeaderWriter<'a> {
         Ok(Self { bytes })
     }
 
-    /// Returns the header length in bytes.
-    /// 
-    /// The first 8 bytes are the fixed header fields and ignored by the header extension length field.
-    /// 
-    /// Thus, 8 bytes are added to get the total header length.
+    /// Returns the total header length in bytes.
     #[inline]
     pub fn header_len(&self) -> usize {
         (self.bytes[1] as usize + 1) * 8
     }
 
     /// Sets the next header field.
+    /// 
+    /// Specifies the type of the next header.
     #[inline]
     pub fn set_next_header(&mut self, next_header: u8) {
         self.bytes[0] = next_header;
     }
 
     /// Sets the header extension length field.
+    /// 
+    /// Length of the header in 8 bytes, not including the first 8 bytes.
     #[inline]
     pub fn set_header_ext_len(&mut self, header_ext_len: u8) {
         self.bytes[1] = header_ext_len;
     }
 
     /// Sets the routing type field.
+    /// 
+    /// Value between 0 and 255, see IANA:
+    /// - 0: deprecated, since it enabled DoS attacks.
+    /// - 1: deprecated, used for the Nimrod project by DARPA.
+    /// - 2: allowed, limited version of type 0, used for Mobile IPv6.
+    /// - 3: allowed, RPL Source Route Header for low-power and lossy networks.
+    /// - 4: allowed, Segment Routing Header (SHR).
     #[inline]
     pub fn set_routing_type(&mut self, routing_type: u8) {
         self.bytes[2] = routing_type;
     }
 
     /// Sets the segments left field.
+    /// 
+    /// Number of nodes this packet has to visit before reaching its final destination.
     #[inline]
     pub fn set_segments_left(&mut self, segments_left: u8) {
         self.bytes[3] = segments_left;
@@ -55,24 +64,24 @@ impl<'a> RoutingHeaderWriter<'a> {
 
     /// Sets the data field.
     ///
-    /// The data field is a variable-length field. 
-    /// 
-    /// If there is no data, the field is filled with zeroes (at least 4 bytes).
+    /// The data field is a variable-length field.
     ///
-    /// May fail if the data exceeds the allocated header length.
+    /// The first 4 bytes are reserved with zeroes.
+    ///
+    /// If you set data that needs more than 4 bytes, set blocks of 8 bytes.
     #[inline]
     pub fn set_data(&mut self, data: &[u8]) -> Result<(), &'static str> {
         if data.len() < 4 {
             return Err("Type-specific data must be at least 4 bytes long.");
         }
 
-        let extension_len = self.bytes[1] as usize * 8 + 4;
+        let extension_len = self.bytes[1] as usize * 8;
 
         if extension_len != data.len() {
             return Err("Type-specific data length must match the header extension length.");
         }
 
-        let start_offset = 4;
+        let start_offset = 8;
         let end_offset = start_offset + data.len();
 
         if end_offset > self.bytes.len() {
@@ -101,35 +110,38 @@ impl<'a> RoutingHeaderReader<'a> {
         Ok(Self { bytes })
     }
 
-    /// Returns the header length in bytes.
-    /// 
-    /// The first 8 bytes are the fixed header fields and ignored by the header extension length field.
-    /// 
-    /// Thus, 8 bytes are added to get the actual header length.
-    #[inline]
-    pub fn header_len(&self) -> usize {
-        (self.bytes[1] as usize + 1) * 8
-    }
-
     /// Returns the next header field.
+    /// 
+    /// Specifies the type of the next header.
     #[inline]
     pub fn next_header(&self) -> u8 {
         self.bytes[0]
     }
 
     /// Returns the header extension length field.
+    /// 
+    /// Length of the header in 8 bytes, not including the first 8 bytes.
     #[inline]
     pub fn header_ext_len(&self) -> u8 {
         self.bytes[1]
     }
 
     /// Returns the routing type field.
+    /// 
+    /// Value between 0 and 255, see IANA:
+    /// - 0: deprecated, since it enabled DoS attacks.
+    /// - 1: deprecated, used for the Nimrod project by DARPA.
+    /// - 2: allowed, limited version of type 0, used for Mobile IPv6.
+    /// - 3: allowed, RPL Source Route Header for low-power and lossy networks.
+    /// - 4: allowed, Segment Routing Header (SHR).
     #[inline]
     pub fn routing_type(&self) -> u8 {
         self.bytes[2]
     }
 
     /// Returns the segments left field.
+    /// 
+    /// Number of nodes this packet has to visit before reaching its final destination.
     #[inline]
     pub fn segments_left(&self) -> u8 {
         self.bytes[3]
@@ -141,6 +153,18 @@ impl<'a> RoutingHeaderReader<'a> {
         let start = 4;
         let end = self.header_len();
         &self.bytes[start..end]
+    }
+
+    /// Returns the total header length in bytes.
+    #[inline]
+    pub fn header_len(&self) -> usize {
+        (self.bytes[1] as usize + 1) * 8
+    }
+
+    /// Returns a reference to the payload.
+    #[inline]
+    pub fn payload(&self) -> &'a [u8] {
+        &self.bytes[self.header_len()..]
     }
 }
 
@@ -163,16 +187,16 @@ pub mod tests {
     #[test]
     fn test_getters_and_setters() {
         // Raw packet.
-        let mut bytes = [0u8; 8];
+        let mut bytes = [0u8; 16];
 
         // Random values.
         let next_header = 6;
-        let header_ext_len = 0;
+        let header_ext_len = 1;
         let routing_type = 2;
         let segments_left = 3;
-        let data = [4, 5, 6, 7];
+        let data = [4, 5, 6, 7, 8, 9, 10, 11];
 
-        // Create a new Routing extension header.
+        // Write the Routing extension header.
         let mut writer = RoutingHeaderWriter::new(&mut bytes).unwrap();
         writer.set_next_header(next_header);
         writer.set_header_ext_len(header_ext_len);
@@ -180,12 +204,12 @@ pub mod tests {
         writer.set_segments_left(segments_left);
         writer.set_data(&data).unwrap();
 
-        // Parse the Routing extension header.
+        // Read the Routing extension header.
         let reader = RoutingHeaderReader::new(&bytes).unwrap();
         assert_eq!(reader.next_header(), next_header);
         assert_eq!(reader.header_ext_len(), header_ext_len);
         assert_eq!(reader.routing_type(), routing_type);
         assert_eq!(reader.segments_left(), segments_left);
-        assert_eq!(reader.data(), &data);
+        assert_eq!(reader.data(), [0, 0, 0, 0, 4, 5, 6, 7, 8, 9, 10, 11]);
     }
 }

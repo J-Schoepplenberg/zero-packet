@@ -20,7 +20,9 @@ Use `zero-packet` if you are working with raw sockets.
 - IPv4
 - IPv6
     - Extension headers
+        - Hop-by-Hop Options
         - Routing
+        - Destination Options
 - ICMPv4
 - ICMPv6
 - TCP
