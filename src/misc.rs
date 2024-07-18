@@ -24,6 +24,8 @@ impl From<u16> for EtherType {
 }
 
 /// Common IP protocols.
+/// 
+/// Shares the same values as Next Header in IPv6.
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
 pub enum IpProtocol {
@@ -191,6 +193,8 @@ impl From<u8> for Icmpv6Type {
 }
 
 /// Common Extension Header types for IPv6.
+/// 
+/// Shares the same values as Protocol in IPv4.
 #[repr(u8)]
 pub enum NextHeader {
     HopByHop = 0,

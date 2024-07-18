@@ -22,11 +22,15 @@ Use `zero-packet` if you are working with raw sockets.
     - Extension headers
         - Hop-by-Hop Options
         - Routing
+        - Fragment
+        - Authentication Header
         - Destination Options
 - ICMPv4
 - ICMPv6
 - TCP
 - UDP
+
+We are able to parse these headers in a multitude of configurations and combinations. Even quite obscure packets that you will rarely see in the wild (e.g. chained IPv6 extension headers). The parser validates fields (e.g. verifying the checksums) and just allows mostly valid packets. However, `zero-packet` does not stop you from building packets with completely bogus fields if you wish so. You have full control to construct packets with completely arbitrary values.
 
 ## Usage
 
