@@ -220,14 +220,26 @@ impl<'a> TcpReader<'a> {
 
     /// Returns a reference to the header.
     #[inline]
-    pub fn header(&self) -> &'a [u8] {
-        &self.bytes[..self.header_len()]
+    pub fn header(&self) -> Result<&'a [u8], &'static str> {
+        let end = self.header_len();
+
+        if end > self.bytes.len() {
+            return Err("Indicated TCP header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[..end])
     }
 
     /// Returns a reference to the payload.
     #[inline]
-    pub fn payload(&self) -> &'a [u8] {
-        &self.bytes[self.header_len()..]
+    pub fn payload(&self) -> Result<&'a [u8], &'static str> {
+        let start = self.header_len();
+
+        if start > self.bytes.len() {
+            return Err("Indicated TCP header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[start..])
     }
 }
 

@@ -3,7 +3,7 @@ use core::fmt;
 pub const OPTIONS_HEADER_MIN_LEN: usize = 8;
 
 /// Writes an Options extension header fields.
-/// 
+///
 /// May be Hop-by-Hop or Destination Options.
 pub struct OptionsHeaderWriter<'a> {
     pub bytes: &'a mut [u8],
@@ -27,7 +27,7 @@ impl<'a> OptionsHeaderWriter<'a> {
     }
 
     /// Sets the next header field.
-    /// 
+    ///
     /// Specifies the type of the next header.
     #[inline]
     pub fn set_next_header(&mut self, next_header: u8) {
@@ -35,7 +35,7 @@ impl<'a> OptionsHeaderWriter<'a> {
     }
 
     /// Sets the header extension length field.
-    /// 
+    ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
     #[inline]
     pub fn set_header_ext_len(&mut self, header_ext_len: u8) {
@@ -43,7 +43,7 @@ impl<'a> OptionsHeaderWriter<'a> {
     }
 
     /// Sets the options and padding fields.
-    /// 
+    ///
     /// Is of variable length. Padding is added to ensure the header length is a multiple of 8 bytes.
     #[inline]
     pub fn set_options(&mut self, options: &[u8]) -> Result<(), &'static str> {
@@ -97,7 +97,7 @@ impl<'a> OptionsHeaderReader<'a> {
     }
 
     /// Returns the next header field.
-    /// 
+    ///
     /// Specifies the type of the next header.
     #[inline]
     pub fn next_header(&self) -> u8 {
@@ -105,7 +105,7 @@ impl<'a> OptionsHeaderReader<'a> {
     }
 
     /// Returns the header extension length field.
-    /// 
+    ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
     #[inline]
     pub fn header_ext_len(&self) -> u8 {
@@ -126,10 +126,32 @@ impl<'a> OptionsHeaderReader<'a> {
         (self.bytes[1] as usize + 1) * 8
     }
 
-    /// Returns a reference to the payload.
+    /// Returns a reference to the header.
+    /// 
+    /// May fail if the indicated header length exceeds the allocated buffer.
     #[inline]
-    pub fn payload(&self) -> &'a [u8] {
-        &self.bytes[self.header_len()..]
+    pub fn header(&self) -> Result<&'a [u8], &'static str> {
+        let end = self.header_len();
+
+        if end > self.bytes.len() {
+            return Err("Indicated IPv6 options header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[..end])
+    }
+
+    /// Returns a reference to the payload.
+    /// 
+    /// May fail if the indicated header length exceeds the allocated buffer.
+    #[inline]
+    pub fn payload(&self) -> Result<&'a [u8], &'static str> {
+        let start = self.header_len();
+
+        if start > self.bytes.len() {
+            return Err("Indicated IPv6 options header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[self.header_len()..])
     }
 }
 

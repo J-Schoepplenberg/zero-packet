@@ -45,19 +45,19 @@ impl<'a> ExtensionHeaders<'a> {
                 NextHeader::HopByHop => {
                     let reader = OptionsHeaderReader::new(bytes)?;
                     next_header = reader.next_header();
-                    bytes = reader.payload();
+                    bytes = reader.payload()?;
                     headers.hop_by_hop = Some(reader);
                 }
                 NextHeader::Routing => {
                     let reader = RoutingHeaderReader::new(bytes)?;
                     next_header = reader.next_header();
-                    bytes = reader.payload();
+                    bytes = reader.payload()?;
                     headers.routing = Some(reader);
                 }
                 NextHeader::Destination => {
                     let reader = OptionsHeaderReader::new(bytes)?;
                     next_header = reader.next_header();
-                    bytes = reader.payload();
+                    bytes = reader.payload()?;
                     headers.destination = Some(reader);
                 }
                 // We escape the loop if we don't recognize the next header.

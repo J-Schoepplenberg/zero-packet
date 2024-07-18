@@ -56,7 +56,7 @@ impl<'a> PacketParser<'a> {
             EtherType::Arp => parser.arp = Some(ArpReader::parse(payload)?),
             EtherType::Ipv4 => {
                 let ipv4 = IPv4Reader::parse(payload)?;
-                let payload = ipv4.payload();
+                let payload = ipv4.payload()?;
                 match IpProtocol::from(ipv4.protocol()) {
                     IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(payload)?),
                     IpProtocol::Udp => parser.udp = Some(UdpReader::parse(payload)?),
@@ -70,6 +70,7 @@ impl<'a> PacketParser<'a> {
                 let ipv6 = IPv6Reader::parse(payload)?;
                 let payload = ipv6.upper_layer_payload();
                 match IpProtocol::from(ipv6.final_next_header()) {
+                    IpProtocol::NoNextHeader => (),
                     IpProtocol::Tcp => parser.tcp = Some(TcpReader::parse(payload)?),
                     IpProtocol::Udp => parser.udp = Some(UdpReader::parse(payload)?),
                     IpProtocol::Icmpv6 => parser.icmpv6 = Some(Icmpv6Reader::parse(payload)?),
@@ -151,7 +152,7 @@ impl<'a> Parse<'a> for IPv4Reader<'a> {
             return Err("IPv4 total length field is invalid. Does not match actual length.");
         }
 
-        if !reader.valid_checksum() {
+        if !reader.valid_checksum()? {
             return Err("IPv4 checksum is invalid.");
         }
 
@@ -269,10 +270,10 @@ impl<'a> VerifyChecksum<'a> for IPv4Reader<'a> {
         let sum = if IpProtocol::from(protocol) == IpProtocol::Icmpv4 {
             0
         } else {
-            pseudo_header(&src, &dest, protocol, self.payload().len())
+            pseudo_header(&src, &dest, protocol, self.payload()?.len())
         };
 
-        if !verify_internet_checksum(self.payload(), sum) {
+        if !verify_internet_checksum(self.payload()?, sum) {
             return Err("Encapsulated checksum is invalid.");
         }
 
@@ -286,6 +287,10 @@ impl<'a> VerifyChecksum<'a> for IPv6Reader<'a> {
     /// Computes the pseudo-header checksum and verifies it with the encapsulated payload.
     #[inline]
     fn verify_checksum(&self) -> Result<(), &'static str> {
+        if IpProtocol::from(self.final_next_header()) == IpProtocol::NoNextHeader {
+            return Ok(());
+        }
+
         let src: [u8; 16] = self.src_addr().try_into().unwrap(); // Won't panic.
         let dest: [u8; 16] = self.dest_addr().try_into().unwrap(); // Won't panic.
 
@@ -334,29 +339,30 @@ mod tests {
 
     #[test]
     fn test_vlan_tagged_frame() {
-        // Valid VLAN tagged packet (Ethernet II + IPv4 + UDP).
+        // Valid VLAN tagged packet.
+        // Ethernet II + IPv4 + UDP.
         let packet = [
-            // Ethernet header
-            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC
-            0x5E, 0x4D, 0x3C, 0x2B, 0x1A, 0x00, // Source MAC
-            0x81, 0x00, // VLAN Ethertype
-            0x00, 0x64, // VLAN Tag (priority 0, CFI 0, VLAN ID 100)
-            0x08, 0x00, // Ethertype (IPv4)
-            // IPv4 header
-            0x45, 0x00, 0x00, 0x2e, // Version, IHL, DSCP, ECN, Total Length (46 bytes)
-            0x00, 0x00, 0x00, 0x00, // Identification, Flags, Fragment Offset
-            0x40, 0x11, 0xf9, 0x6b, // TTL (64), Protocol (UDP), IPv4 Checksum
-            0xC0, 0xA8, 0x00, 0x01, // Source IP (192.168.0.1)
-            0xC0, 0xA8, 0x00, 0x02, // Destination IP (192.168.0.2)
-            // UDP header
-            0x04, 0xD2, 0x16, 0x2E, // Source Port (1234), Destination Port (5678)
-            0x00, 0x1a, 0x63, 0x66, // Length (26 bytes), UDP Checksum
-            // Padding
-            0x00, 0x00, 0x00, 0x00, // Padding
-            0x00, 0x00, 0x00, 0x00, // Padding
-            0x00, 0x00, 0x00, 0x00, // Padding
-            0x00, 0x00, 0x00, 0x00, // Padding
-            0x00, 0x00, // Padding
+            // Ethernet header.
+            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC.
+            0x5E, 0x4D, 0x3C, 0x2B, 0x1A, 0x00, // Source MAC.
+            0x81, 0x00, // VLAN Ethertype.
+            0x00, 0x64, // VLAN Tag (priority 0, CFI 0, VLAN ID 100).
+            0x08, 0x00, // Ethertype (IPv4).
+            // IPv4 header.
+            0x45, 0x00, 0x00, 0x2e, // Version, IHL, DSCP, ECN, Total Length (46 bytes).
+            0x00, 0x00, 0x00, 0x00, // Identification, Flags, Fragment Offset.
+            0x40, 0x11, 0xf9, 0x6b, // TTL (64), Protocol (UDP), IPv4 Checksum.
+            0xC0, 0xA8, 0x00, 0x01, // Source IP (192.168.0.1).
+            0xC0, 0xA8, 0x00, 0x02, // Destination IP (192.168.0.2).
+            // UDP header.
+            0x04, 0xD2, 0x16, 0x2E, // Source Port (1234), Destination Port (5678).
+            0x00, 0x1a, 0x63, 0x66, // Length (26 bytes), UDP Checksum.
+            // Padding.
+            0x00, 0x00, 0x00, 0x00, // Padding.
+            0x00, 0x00, 0x00, 0x00, // Padding.
+            0x00, 0x00, 0x00, 0x00, // Padding.
+            0x00, 0x00, 0x00, 0x00, // Padding.
+            0x00, 0x00, // Padding.
         ];
 
         // Parse the packet.
@@ -394,30 +400,31 @@ mod tests {
 
     #[test]
     fn test_double_vlan_tagged_frame() {
-        // Valid double VLAN tagged packet (Ethernet II + IPv4 + UDP).
+        // Valid double VLAN tagged packet.
+        // Ethernet II + IPv4 + UDP.
         let packet = [
-            // Ethernet header
-            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC
-            0x5E, 0x4D, 0x3C, 0x2B, 0x1A, 0x00, // Source MAC
-            0x88, 0xA8, // Outer VLAN Ethertype
-            0x00, 0xC8, // Outer VLAN Tag (priority 0, CFI 0, VLAN ID 200)
-            0x81, 0x00, // Inner VLAN Ethertype
-            0x00, 0x64, // Inner VLAN Tag (priority 0, CFI 0, VLAN ID 100)
-            0x08, 0x00, // Ethertype (IPv4)
-            // IPv4 header
-            0x45, 0x00, 0x00, 0x2a, // Version, IHL, DSCP, ECN, Total Length (42 bytes)
-            0x00, 0x00, 0x00, 0x00, // Identification, Flags, Fragment Offset
-            0x40, 0x11, 0xf9, 0x6f, // TTL (64), Protocol (UDP), IPv4 Checksum
-            0xC0, 0xA8, 0x00, 0x01, // Source IP (192.168.0.1)
-            0xC0, 0xA8, 0x00, 0x02, // Destination IP (192.168.0.2)
-            // UDP header
-            0x04, 0xD2, 0x16, 0x2E, // Source Port (1234), Destination Port (5678)
-            0x00, 0x16, 0x63, 0x6e, // Length (22 bytes), UDP Checksum (0x6366)
-            // Padding
-            0x00, 0x00, 0x00, 0x00, // Padding
-            0x00, 0x00, 0x00, 0x00, // Padding
-            0x00, 0x00, 0x00, 0x00, // Padding
-            0x00, 0x00, // Padding
+            // Ethernet header.
+            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC.
+            0x5E, 0x4D, 0x3C, 0x2B, 0x1A, 0x00, // Source MAC.
+            0x88, 0xA8, // Outer VLAN Ethertype.
+            0x00, 0xC8, // Outer VLAN Tag (priority 0, CFI 0, VLAN ID 200).
+            0x81, 0x00, // Inner VLAN Ethertype.
+            0x00, 0x64, // Inner VLAN Tag (priority 0, CFI 0, VLAN ID 100).
+            0x08, 0x00, // Ethertype (IPv4).
+            // IPv4 header.
+            0x45, 0x00, 0x00, 0x2a, // Version, IHL, DSCP, ECN, Total Length (42 bytes).
+            0x00, 0x00, 0x00, 0x00, // Identification, Flags, Fragment Offset.
+            0x40, 0x11, 0xf9, 0x6f, // TTL (64), Protocol (UDP), IPv4 Checksum.
+            0xC0, 0xA8, 0x00, 0x01, // Source IP (192.168.0.1).
+            0xC0, 0xA8, 0x00, 0x02, // Destination IP (192.168.0.2).
+            // UDP header.
+            0x04, 0xD2, 0x16, 0x2E, // Source Port (1234), Destination Port (5678).
+            0x00, 0x16, 0x63, 0x6e, // Length (22 bytes), UDP Checksum (0x6366).
+            // Padding.
+            0x00, 0x00, 0x00, 0x00, // Padding.
+            0x00, 0x00, 0x00, 0x00, // Padding.
+            0x00, 0x00, 0x00, 0x00, // Padding.
+            0x00, 0x00, // Padding.
         ];
 
         // Parse the packet.
@@ -458,7 +465,8 @@ mod tests {
 
     #[test]
     fn test_icmpv4_echo_response() {
-        // ICMP echo response (Ethernet II + IPv4 + ICMP).
+        // ICMP echo response.
+        // Ethernet II + IPv4 + ICMP.
         let packet = [
             0x08, 0x00, 0x20, 0x86, 0x35, 0x4b, 0x00, 0xe0, 0xf7, 0x26, 0x3f, 0xe9, 0x08, 0x00,
             0x45, 0x00, 0x00, 0x54, 0xaa, 0xfb, 0x40, 0x00, 0xfc, 0x01, 0xfa, 0x30, 0x8b, 0x85,
@@ -502,7 +510,8 @@ mod tests {
 
     #[test]
     fn test_ipv6_icmpv6() {
-        // ICMPv6 packet (Ethernet II + IPv6 + ICMPv6).
+        // ICMPv6 packet.
+        // Ethernet II + IPv6 + ICMPv6.
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
             0x60, 0x00, 0x00, 0x00, 0x00, 0x20, 0x3a, 0xff, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00,
@@ -547,7 +556,8 @@ mod tests {
 
     #[test]
     fn test_ipv6_udp_payload() {
-        // UDP packet (Ethernet II + IPv6 + UDP + Payload).
+        // UDP packet.
+        // Ethernet II + IPv6 + UDP + Payload.
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
             0x60, 0x00, 0x00, 0x00, 0x00, 0x14, 0x11, 0x03, 0x3f, 0xfe, 0x05, 0x07, 0x00, 0x00,
@@ -589,7 +599,8 @@ mod tests {
 
     #[test]
     fn test_ipv6_routing_extension_header() {
-        // IPv6 with routing extension header (Ethernet II + IPv6 + Routing + TCP).
+        // IPv6 with routing extension header.
+        // Ethernet II + IPv6 + Routing + TCP.
         let packet = [
             0x86, 0x93, 0x23, 0xd3, 0x37, 0x8e, 0x22, 0x1a, 0x95, 0xd6, 0x7a, 0x23, 0x86, 0xdd,
             0x60, 0x0f, 0xbb, 0x74, 0x00, 0x88, 0x2b, 0x3f, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -639,7 +650,8 @@ mod tests {
 
     #[test]
     fn test_ipv6_hop_by_hop_options() {
-        // IPv6 with hop-by-hop options extension header (Ethernet II + IPv6 + Hop-by-Hop + TCP).
+        // IPv6 with hop-by-hop options extension header.
+        // Ethernet II + IPv6 + Hop-by-Hop + TCP.
         let packet = [
             0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
             0x60, 0x00, 0x00, 0x04, 0x00, 0x1c, 0x00, 0x40, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
@@ -684,7 +696,8 @@ mod tests {
 
     #[test]
     fn test_ipv6_destination_options() {
-        // IPv6 with destination options extension header (Ethernet II + IPv6 + Destination Options + TCP).
+        // IPv6 with destination options extension header.
+        // Ethernet II + IPv6 + Destination Options + TCP.
         let packet = [
             0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
             0x60, 0x00, 0x00, 0x05, 0x00, 0x1c, 0x3c, 0x40, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
@@ -724,6 +737,68 @@ mod tests {
         let extension_headers = ipv6.extension_headers.unwrap();
 
         // Ensure hop-by-hop options extension header is present.
+        assert!(extension_headers.destination.is_some());
+    }
+
+    #[test]
+    fn test_extension_headers_chained() {
+        // IPv6 with extension headers chained together.
+        // Ethernet II + IPv6 + Hop-by-Hop + Destination + NoNextHeader.
+        let packet = [
+            // Ethernet II.
+            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC Address.
+            0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5F, // Source MAC Address.
+            0x86, 0xDD, // Type: IPv6 (0x86DD).
+            // IPv6 Header.
+            0x60, 0x00, 0x00, 0x00, // Version, Traffic Class, Flow Label.
+            0x00, 0x20, // Payload Length (32 bytes).
+            0x00, // Next Header: Hop-by-Hop Options (0x00).
+            0x40, // Hop Limit.
+            0x20, 0x01, 0x0D, 0xB8, 0x85, 0xA3, 0x00, 0x00, // Source Address.
+            0x00, 0x00, 0x8A, 0x2E, 0x03, 0x70, 0x73, 0x34, // Source Address.
+            0xFE, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Destination Address.
+            0x02, 0x02, 0xB3, 0xFF, 0xFE, 0x1E, 0x83, 0x29, // Destination Address.
+            // Hop-by-Hop Options Header.
+            0x3C, // Next Header: Destination Options (0x3C).
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Options and padding.
+            // Destination Options Header.
+            0x3B, // Next Header: No Next Header (0x3B).
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Options and padding.
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+
+        // Unwrap the parser.
+        let unwrapped = parser.unwrap();
+
+        // Ensure the parser has the expected fields.
+        assert!(unwrapped.ethernet.is_some());
+        assert!(unwrapped.ipv6.is_some());
+
+        // Ensure these headers are not present.
+        assert!(unwrapped.icmpv4.is_none());
+        assert!(unwrapped.icmpv6.is_none());
+        assert!(unwrapped.arp.is_none());
+        assert!(unwrapped.udp.is_none());
+        assert!(unwrapped.tcp.is_none());
+
+        // Unwrap IPv6 header.
+        let ipv6 = unwrapped.ipv6.unwrap();
+
+        // Ensure extension headers are present.
+        assert!(ipv6.extension_headers.is_some());
+
+        // Unwrap extension headers.
+        let extension_headers = ipv6.extension_headers.unwrap();
+
+        // Ensure hop-by-hop options extension header is present.
+        assert!(extension_headers.hop_by_hop.is_some());
+
+        // Ensure destination options extension header is present.
         assert!(extension_headers.destination.is_some());
     }
 }

@@ -26,7 +26,7 @@ impl<'a> RoutingHeaderWriter<'a> {
     }
 
     /// Sets the next header field.
-    /// 
+    ///
     /// Specifies the type of the next header.
     #[inline]
     pub fn set_next_header(&mut self, next_header: u8) {
@@ -34,7 +34,7 @@ impl<'a> RoutingHeaderWriter<'a> {
     }
 
     /// Sets the header extension length field.
-    /// 
+    ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
     #[inline]
     pub fn set_header_ext_len(&mut self, header_ext_len: u8) {
@@ -42,7 +42,7 @@ impl<'a> RoutingHeaderWriter<'a> {
     }
 
     /// Sets the routing type field.
-    /// 
+    ///
     /// Value between 0 and 255, see IANA:
     /// - 0: deprecated, since it enabled DoS attacks.
     /// - 1: deprecated, used for the Nimrod project by DARPA.
@@ -55,7 +55,7 @@ impl<'a> RoutingHeaderWriter<'a> {
     }
 
     /// Sets the segments left field.
-    /// 
+    ///
     /// Number of nodes this packet has to visit before reaching its final destination.
     #[inline]
     pub fn set_segments_left(&mut self, segments_left: u8) {
@@ -111,7 +111,7 @@ impl<'a> RoutingHeaderReader<'a> {
     }
 
     /// Returns the next header field.
-    /// 
+    ///
     /// Specifies the type of the next header.
     #[inline]
     pub fn next_header(&self) -> u8 {
@@ -119,7 +119,7 @@ impl<'a> RoutingHeaderReader<'a> {
     }
 
     /// Returns the header extension length field.
-    /// 
+    ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
     #[inline]
     pub fn header_ext_len(&self) -> u8 {
@@ -127,7 +127,7 @@ impl<'a> RoutingHeaderReader<'a> {
     }
 
     /// Returns the routing type field.
-    /// 
+    ///
     /// Value between 0 and 255, see IANA:
     /// - 0: deprecated, since it enabled DoS attacks.
     /// - 1: deprecated, used for the Nimrod project by DARPA.
@@ -140,7 +140,7 @@ impl<'a> RoutingHeaderReader<'a> {
     }
 
     /// Returns the segments left field.
-    /// 
+    ///
     /// Number of nodes this packet has to visit before reaching its final destination.
     #[inline]
     pub fn segments_left(&self) -> u8 {
@@ -161,10 +161,32 @@ impl<'a> RoutingHeaderReader<'a> {
         (self.bytes[1] as usize + 1) * 8
     }
 
-    /// Returns a reference to the payload.
+    /// Returns a reference to the header.
+    /// 
+    /// May fail if the indicated header length exceeds the allocated buffer.
     #[inline]
-    pub fn payload(&self) -> &'a [u8] {
-        &self.bytes[self.header_len()..]
+    pub fn header(&self) -> Result<&'a [u8], &'static str> {
+        let end = self.header_len();
+
+        if end > self.bytes.len() {
+            return Err("Indicated IPv6 routing header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[..end])
+    }
+
+    /// Returns a reference to the payload.
+    /// 
+    /// May fail if the indicated header length exceeds the allocated buffer.
+    #[inline]
+    pub fn payload(&self) -> Result<&'a [u8], &'static str> {
+        let start = self.header_len();
+
+        if start > self.bytes.len() {
+            return Err("Indicated IPv6 routing header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[self.header_len()..])
     }
 }
 

@@ -31,6 +31,7 @@ pub enum IpProtocol {
     Tcp = 6,
     Udp = 17,
     Icmpv6 = 58,
+    NoNextHeader = 59,
     Unknown(u8),
 }
 
@@ -41,6 +42,7 @@ impl From<u8> for IpProtocol {
             6 => IpProtocol::Tcp,
             17 => IpProtocol::Udp,
             58 => IpProtocol::Icmpv6,
+            59 => IpProtocol::NoNextHeader,
             other => IpProtocol::Unknown(other),
         }
     }

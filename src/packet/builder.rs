@@ -66,7 +66,7 @@ pub struct Icmpv6HeaderState;
 /// The creation of new `PacketBuilder` instances happens on the stack.
 /// These stack allocations are very cheap and most likely optimized away by the compiler.
 /// The state types are zero-sized types (ZSTs) and don't consume any memory.
-/// 
+///
 /// The builder does not stop you from choosing bogus values for the fields.
 /// You may construct completely arbitrary and highly manipulative packets.
 pub struct PacketBuilder<'a, State> {
@@ -342,8 +342,8 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         dest_port: u16,
         sequence_number: u32,
         acknowledgment_number: u32,
-        reserved: u8,
         data_offset: u8,
+        reserved: u8,
         flags: u8,
         window_size: u16,
         urgent_pointer: u16,
@@ -359,8 +359,8 @@ impl<'a> PacketBuilder<'a, Ipv4HeaderState> {
         writer.set_dest_port(dest_port);
         writer.set_sequence_number(sequence_number);
         writer.set_ack_number(acknowledgment_number);
-        writer.set_reserved(reserved);
         writer.set_data_offset(data_offset);
+        writer.set_reserved(reserved);
         writer.set_flags(flags);
         writer.set_window_size(window_size);
         writer.set_urgent_pointer(urgent_pointer);
@@ -471,8 +471,8 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         dest_port: u16,
         sequence_number: u32,
         acknowledgment_number: u32,
-        reserved: u8,
         data_offset: u8,
+        reserved: u8,
         flags: u8,
         window_size: u16,
         urgent_pointer: u16,
@@ -488,8 +488,8 @@ impl<'a> PacketBuilder<'a, Ipv6HeaderState> {
         writer.set_dest_port(dest_port);
         writer.set_sequence_number(sequence_number);
         writer.set_ack_number(acknowledgment_number);
-        writer.set_reserved(reserved);
         writer.set_data_offset(data_offset);
+        writer.set_reserved(reserved);
         writer.set_flags(flags);
         writer.set_window_size(window_size);
         writer.set_urgent_pointer(urgent_pointer);
@@ -778,7 +778,7 @@ mod tests {
         let should_be = [
             4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
             112, 57, 123, 6, 87, 113, 192, 168, 1, 1, 192, 168, 1, 2, 0, 99, 0, 11, 0, 0, 0, 123,
-            0, 0, 1, 65, 59, 99, 16, 225, 41, 81, 4, 210,
+            0, 0, 1, 65, 179, 99, 16, 225, 177, 80, 4, 210,
         ];
 
         // Measure the number of allocations.

@@ -223,28 +223,44 @@ impl<'a> IPv4Reader<'a> {
         ((self.bytes[10] as u16) << 8) | (self.bytes[11] as u16)
     }
 
-    /// Returns the actual header length in bytes.
+    /// Returns the indicated header length in bytes.
     #[inline]
     pub fn header_len(&self) -> usize {
         self.ihl() as usize * 4
     }
 
     /// Returns a reference to the header.
+    /// 
+    /// May fail if the indicated header length exceeds the allocated buffer.
     #[inline]
-    pub fn header(&self) -> &'a [u8] {
-        &self.bytes[..self.header_len()]
+    pub fn header(&self) -> Result<&'a [u8], &'static str> {
+        let end = self.header_len();
+
+        if end > self.bytes.len() {
+            return Err("Indicated IPv4 header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[..self.header_len()])
     }
 
     /// Returns a reference to the payload.
+    /// 
+    /// May fail if the indicated header length exceeds the allocated buffer.
     #[inline]
-    pub fn payload(&self) -> &'a [u8] {
-        &self.bytes[self.header_len()..]
+    pub fn payload(&self) -> Result<&'a [u8], &'static str> {
+        let start = self.header_len();
+
+        if start > self.bytes.len() {
+            return Err("Indicated IPv4 header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[self.header_len()..])
     }
 
     /// Verifies the checksum field.
     #[inline]
-    pub fn valid_checksum(&self) -> bool {
-        internet_checksum(self.header(), 0) == 0
+    pub fn valid_checksum(&self) -> Result<bool, &'static str> {
+        Ok(internet_checksum(self.header()?, 0) == 0)
     }
 }
 
