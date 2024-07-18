@@ -110,5 +110,7 @@ if let Some(tcp) = TcpReader::new(&packet)? {
 Upcoming features:
 
 - [ ] IPv6 Extension Headers
-- [ ] IPsec
+- [ ] IP-in-IP
+    - [ ] 6in4
+    - [ ] 4in6
 - [ ] ...
