@@ -245,8 +245,17 @@ impl<'a> IPv6Reader<'a> {
                             break;
                         }
                     }
+                    NextHeader::AuthHeader => {
+                        if let Some(auth_header) = &extension_headers.auth_header {
+                            next_header = auth_header.next_header();
+                        } else {
+                            break;
+                        }
+                    }
                     NextHeader::Destination => {
-                        if let Some(destination) = &extension_headers.destination {
+                        if let Some(destination) = &extension_headers.destination_1st {
+                            next_header = destination.next_header();
+                        } else if let Some(destination) = &extension_headers.destination_2nd {
                             next_header = destination.next_header();
                         } else {
                             break;

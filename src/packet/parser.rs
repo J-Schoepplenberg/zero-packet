@@ -737,7 +737,7 @@ mod tests {
         let extension_headers = ipv6.extension_headers.unwrap();
 
         // Ensure hop-by-hop options extension header is present.
-        assert!(extension_headers.destination.is_some());
+        assert!(extension_headers.destination_1st.is_some());
     }
 
     #[test]
@@ -799,6 +799,6 @@ mod tests {
         assert!(extension_headers.hop_by_hop.is_some());
 
         // Ensure destination options extension header is present.
-        assert!(extension_headers.destination.is_some());
+        assert!(extension_headers.destination_1st.is_some());
     }
 }

@@ -19,7 +19,9 @@
         - Extension headers
             - Hop-by-Hop Options
             - Routing
-            - Destination Options
+            - Fragment
+            - Authentication Header
+            - Destination Options (1st and 2nd)
     - ICMPv4
     - ICMPv6
     - TCP
@@ -103,7 +105,7 @@
 */
 
 // Disables the standard library.
-#![no_std]
+//#![no_std]
 
 // Statically guarantees that the code cannot be unsafe.
 #![forbid(unsafe_code)]

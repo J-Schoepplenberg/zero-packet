@@ -10,7 +10,7 @@ No async, no allocations, no dependencies, no macros, no std, no unsafe. It simp
 
 Use `zero-packet` if you are working with raw sockets.
 
-## Supported protocols
+## Supported
 
 - Ethernet II
     - Optional
@@ -22,13 +22,13 @@ Use `zero-packet` if you are working with raw sockets.
     - Extension headers
         - Hop-by-Hop Options
         - Routing
-        - Destination Options
+        - Fragment
+        - Authentication Header
+        - Destination Options (1st and 2nd)
 - ICMPv4
 - ICMPv6
 - TCP
 - UDP
-
-We are able to parse these headers in a multitude of configurations and combinations. Even quite obscure packets that you will rarely see in the wild (e.g. chained IPv6 extension headers). The parser validates fields (e.g. verifying the checksums) and just allows mostly valid packets. However, `zero-packet` does not stop you from building packets with completely bogus fields if you wish so. You have full control to construct packets with arbitrary values.
 
 ## Usage
 
@@ -108,13 +108,3 @@ if let Some(tcp) = TcpReader::new(&packet)? {
 }
 
 ```
-
-## Roadmap
-
-Upcoming features:
-
-- [ ] IPv6 Extension Headers
-- [ ] IP-in-IP
-    - [ ] 6in4
-    - [ ] 4in6
-- [ ] ...

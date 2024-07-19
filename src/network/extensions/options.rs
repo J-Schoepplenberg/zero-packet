@@ -38,6 +38,8 @@ impl<'a> OptionsHeaderWriter<'a> {
     /// Sets the header extension length field.
     ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
+    /// 
+    /// E.g. Header length = (header_ext_len + 1) * 8.
     #[inline]
     pub fn set_header_ext_len(&mut self, header_ext_len: u8) {
         self.bytes[1] = header_ext_len;
@@ -45,7 +47,7 @@ impl<'a> OptionsHeaderWriter<'a> {
 
     /// Sets the options and padding fields.
     ///
-    /// Is of variable length. Padding is added to ensure the header length is a multiple of 8 bytes.
+    /// Is of variable length.
     #[inline]
     pub fn set_options(&mut self, options: &[u8]) -> Result<(), &'static str> {
         if options.len() < 6 {
@@ -59,25 +61,8 @@ impl<'a> OptionsHeaderWriter<'a> {
             return Err("Options exceed the allocated header length.");
         }
 
-        let padding_len = (8 - (end_offset % 8)) % 8;
-        let padding_offset = end_offset + padding_len;
-
-        if padding_offset > self.bytes.len() {
-            return Err("Padding exceeds the allocated header length.");
-        }
-
-        let extension_len = self.bytes[1] as usize * 8 + 6;
-
-        if extension_len != options.len() + padding_len {
-            return Err("Options length must match the header extension length.");
-        }
-
         self.bytes[start_offset..end_offset].copy_from_slice(options);
-
-        for i in end_offset..padding_offset {
-            self.bytes[i] = 0;
-        }
-
+        
         Ok(())
     }
 }
@@ -108,6 +93,8 @@ impl<'a> OptionsHeaderReader<'a> {
     /// Returns the header extension length field.
     ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
+    /// 
+    /// E.g. Header length = (header_ext_len + 1) * 8.
     #[inline]
     pub fn header_ext_len(&self) -> u8 {
         self.bytes[1]
@@ -115,10 +102,14 @@ impl<'a> OptionsHeaderReader<'a> {
 
     /// Returns the options and padding fields.
     #[inline]
-    pub fn options(&self) -> &'a [u8] {
-        let start = 2;
+    pub fn options(&self) -> Result<&'a [u8], &'static str> {
         let end = self.header_len();
-        &self.bytes[start..end]
+
+        if self.bytes.len() < end {
+            return Err("Indicated header length exceeds the allocated buffer.");
+        }
+
+        Ok(&self.bytes[2..end])
     }
 
     /// Returns the total header length in bytes.
@@ -128,7 +119,7 @@ impl<'a> OptionsHeaderReader<'a> {
     }
 
     /// Returns a reference to the header.
-    /// 
+    ///
     /// May fail if the indicated header length exceeds the allocated buffer.
     #[inline]
     pub fn header(&self) -> Result<&'a [u8], &'static str> {
@@ -142,7 +133,7 @@ impl<'a> OptionsHeaderReader<'a> {
     }
 
     /// Returns a reference to the payload.
-    /// 
+    ///
     /// May fail if the indicated header length exceeds the allocated buffer.
     #[inline]
     pub fn payload(&self) -> Result<&'a [u8], &'static str> {
@@ -178,7 +169,7 @@ pub mod tests {
         // Random values.
         let next_header = 6;
         let header_ext_len = 1;
-        let options = [0; 7];
+        let options = [1; 7];
 
         // Write the Options extension header.
         let mut writer = OptionsHeaderWriter::new(&mut bytes).unwrap();
@@ -190,5 +181,9 @@ pub mod tests {
         let reader = OptionsHeaderReader::new(&bytes).unwrap();
         assert_eq!(reader.next_header(), next_header);
         assert_eq!(reader.header_ext_len(), header_ext_len);
+        assert_eq!(
+            reader.options().unwrap(),
+            &[1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+        );
     }
 }
