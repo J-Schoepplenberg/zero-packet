@@ -3,7 +3,7 @@ use crate::{
         arp::ArpReader,
         ethernet::{EthernetReader, ETHERNET_MIN_FRAME_LENGTH},
     },
-    misc::{EtherType, Icmpv4Type, Icmpv6Type, IpProtocol},
+    misc::{EtherType, Icmpv4Type, Icmpv6Type, IpInIp, IpProtocol},
     network::{
         checksum::{pseudo_header, verify_internet_checksum},
         icmpv4::{Icmpv4Reader, ICMPV4_MAX_VALID_CODE},
@@ -24,6 +24,7 @@ pub struct PacketParser<'a> {
     pub arp: Option<ArpReader<'a>>,
     pub ipv4: Option<IPv4Reader<'a>>,
     pub ipv6: Option<IPv6Reader<'a>>,
+    pub ip_in_ip: Option<IpInIp<'a>>,
     pub tcp: Option<TcpReader<'a>>,
     pub udp: Option<UdpReader<'a>>,
     pub icmpv4: Option<Icmpv4Reader<'a>>,
@@ -31,76 +32,111 @@ pub struct PacketParser<'a> {
 }
 
 impl<'a> PacketParser<'a> {
-    /// Parses a raw packet given in bytes.
-    ///
-    /// Determines the encapsulated protocols and parses them.
-    ///
-    /// May fail if validation of the fields fails.
+    /// Creates a new `PacketParser`.
+    #[inline]
+    fn new() -> Self {
+        Self {
+            ethernet: None,
+            arp: None,
+            ipv4: None,
+            ipv6: None,
+            ip_in_ip: None,
+            tcp: None,
+            udp: None,
+            icmpv4: None,
+            icmpv6: None,
+        }
+    }
+
+    /// Determines the protocols encapsulated in some bytes and attempts to parse them.
     #[inline]
     pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
         let ethernet = EthernetReader::parse(bytes)?;
         let payload = &bytes[ethernet.header_len()..];
 
-        let mut parser = PacketParser {
-            ethernet: None,
-            arp: None,
-            ipv4: None,
-            ipv6: None,
-            tcp: None,
-            udp: None,
-            icmpv4: None,
-            icmpv6: None,
-        };
+        let mut parser = PacketParser::new();
 
         match EtherType::from(ethernet.ethertype()) {
             EtherType::Arp => parser.arp = Some(ArpReader::parse(payload)?),
-            EtherType::Ipv4 => {
-                let ipv4 = IPv4Reader::parse(payload)?;
-                let payload = ipv4.payload()?;
-                match IpProtocol::from(ipv4.protocol()) {
-                    IpProtocol::Tcp => {
-                        parser.tcp = Some(TcpReader::parse(payload)?);
-                        ipv4.verify_checksum()?;
-                    }
-                    IpProtocol::Udp => {
-                        parser.udp = Some(UdpReader::parse(payload)?);
-                        ipv4.verify_checksum()?;
-                    }
-                    IpProtocol::Icmpv4 => {
-                        parser.icmpv4 = Some(Icmpv4Reader::parse(payload)?);
-                        ipv4.verify_checksum()?;
-                    }
-                    _ => (), // Unknown protocol, proceed.
-                }
-                parser.ipv4 = Some(ipv4);
-            }
-            EtherType::Ipv6 => {
-                let ipv6 = IPv6Reader::parse(payload)?;
-                let payload = ipv6.upper_layer_payload();
-                match IpProtocol::from(ipv6.final_next_header()) {
-                    IpProtocol::NoNextHeader => (),
-                    IpProtocol::Tcp => {
-                        parser.tcp = Some(TcpReader::parse(payload)?);
-                        ipv6.verify_checksum()?;
-                    }
-                    IpProtocol::Udp => {
-                        parser.udp = Some(UdpReader::parse(payload)?);
-                        ipv6.verify_checksum()?;
-                    }
-                    IpProtocol::Icmpv6 => {
-                        parser.icmpv6 = Some(Icmpv6Reader::parse(payload)?);
-                        ipv6.verify_checksum()?;
-                    }
-                    _ => (), // Unknown next header, proceed.
-                }
-                parser.ipv6 = Some(ipv6);
-            }
-            EtherType::Unknown(_) => (), // Unknown EtherType, proceed.
+            EtherType::Ipv4 => parser.ipv4(payload, true)?,
+            EtherType::Ipv6 => parser.ipv6(payload, true)?,
+            _ => (), // Unknown EtherType, proceed.
         }
 
         parser.ethernet = Some(ethernet);
 
         Ok(parser)
+    }
+
+    /// Parsing IPv4 packets.
+    #[inline]
+    fn ipv4(&mut self, payload: &'a [u8], from_ether: bool) -> Result<(), &'static str> {
+        let ipv4 = IPv4Reader::parse(payload)?;
+
+        let payload = ipv4.payload()?;
+        let protocol = IpProtocol::from(ipv4.protocol());
+
+        self.parse_protocol(protocol, payload, &ipv4)?;
+
+        if from_ether {
+            self.ipv4 = Some(ipv4);
+        } else {
+            self.ip_in_ip = Some(IpInIp::Ipv4(ipv4));
+        }
+
+        Ok(())
+    }
+
+    /// Parsing IPv6 packets.
+    #[inline]
+    fn ipv6(&mut self, payload: &'a [u8], from_ether: bool) -> Result<(), &'static str> {
+        let ipv6 = IPv6Reader::parse(payload)?;
+
+        let payload = ipv6.upper_layer_payload();
+        let next_header = IpProtocol::from(ipv6.final_next_header());
+
+        self.parse_protocol(next_header, payload, &ipv6)?;
+
+        if from_ether {
+            self.ipv6 = Some(ipv6);
+        } else {
+            self.ip_in_ip = Some(IpInIp::Ipv6(ipv6));
+        }
+
+        Ok(())
+    }
+
+    /// Parsing encapsulated protocols.
+    #[inline]
+    fn parse_protocol<T: IpReader<'a>>(
+        &mut self,
+        protocol: IpProtocol,
+        payload: &'a [u8],
+        reader: &T,
+    ) -> Result<(), &'static str> {
+        match protocol {
+            IpProtocol::Tcp => {
+                self.tcp = Some(TcpReader::parse(payload)?);
+                reader.verify_checksum()?;
+            }
+            IpProtocol::Udp => {
+                self.udp = Some(UdpReader::parse(payload)?);
+                reader.verify_checksum()?;
+            }
+            IpProtocol::Icmpv4 => {
+                self.icmpv4 = Some(Icmpv4Reader::parse(payload)?);
+                reader.verify_checksum()?;
+            }
+            IpProtocol::Icmpv6 => {
+                self.icmpv6 = Some(Icmpv6Reader::parse(payload)?);
+                reader.verify_checksum()?;
+            }
+            IpProtocol::Ipv4 => self.ipv4(payload, false)?,
+            IpProtocol::Ipv6 => self.ipv6(payload, false)?,
+            _ => (), // Unknown protocol, proceed.
+        }
+
+        Ok(())
     }
 }
 
@@ -267,12 +303,12 @@ impl<'a> Parse<'a> for Icmpv6Reader<'a> {
 }
 
 /// Trait to verify the checksum of protocols encapsulated in IP packets.
-pub trait VerifyChecksum<'a> {
+pub trait IpReader<'a> {
     /// Verifies the checksum of the encapsulated protocol.
     fn verify_checksum(&self) -> Result<(), &'static str>;
 }
 
-impl<'a> VerifyChecksum<'a> for IPv4Reader<'a> {
+impl<'a> IpReader<'a> for IPv4Reader<'a> {
     /// Verifies the checksum of an encapsulated protocol in an IPv4 packet.
     ///
     /// Computes the pseudo-header checksum and verifies it with the encapsulated payload.
@@ -290,14 +326,14 @@ impl<'a> VerifyChecksum<'a> for IPv4Reader<'a> {
         };
 
         if !verify_internet_checksum(self.payload()?, sum) {
-            return Err("Encapsulated checksum is invalid.");
+            return Err("IPv4 encapsulated checksum is invalid.");
         }
 
         Ok(())
     }
 }
 
-impl<'a> VerifyChecksum<'a> for IPv6Reader<'a> {
+impl<'a> IpReader<'a> for IPv6Reader<'a> {
     /// Verifies the checksum of an encapsulated protocol in an IPv6 packet.
     ///
     /// Computes the pseudo-header checksum and verifies it with the encapsulated payload.
@@ -310,10 +346,6 @@ impl<'a> VerifyChecksum<'a> for IPv6Reader<'a> {
         let src: [u8; 16] = self.src_addr().try_into().unwrap(); // Won't panic.
         let dest: [u8; 16] = self.dest_addr().try_into().unwrap(); // Won't panic.
 
-        // We use the pseudo header of the primary IPv6 header.
-        // We ignore the extension headers in-between.
-        // This may fail if there are multiple IPv6 headers in the packet (e.g. IPv6-in-IPv6).
-        // In that case one would need to use the innermost IPv6 header for the pseudo header.
         let sum = pseudo_header(
             &src,
             &dest,
@@ -322,7 +354,7 @@ impl<'a> VerifyChecksum<'a> for IPv6Reader<'a> {
         );
 
         if !verify_internet_checksum(self.upper_layer_payload(), sum) {
-            return Err("Encapsulated checksum is invalid.");
+            return Err("IPv6 encapsulated checksum is invalid.");
         }
 
         Ok(())
@@ -346,17 +378,12 @@ mod tests {
         let parser = PacketParser::parse(&packet);
 
         // Ensure the parser fails.
-        assert_eq!(
-            parser.is_err(),
-            true,
-            "Slice needs to be least 64 bytes long to be a valid Ethernet frame."
-        );
+        assert!(parser.is_err());
     }
 
     #[test]
     fn test_vlan_tagged_frame() {
-        // Valid VLAN tagged packet.
-        // Ethernet II + IPv4 + UDP.
+        // Ethernet II + IPv4 (VLAN tagged) + UDP.
         let packet = [
             // Ethernet header.
             0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC.
@@ -416,8 +443,7 @@ mod tests {
 
     #[test]
     fn test_double_vlan_tagged_frame() {
-        // Valid double VLAN tagged packet.
-        // Ethernet II + IPv4 + UDP.
+        // Ethernet II + IPv4 (double VLAN tagged) + UDP.
         let packet = [
             // Ethernet header.
             0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, // Destination MAC.
@@ -481,7 +507,6 @@ mod tests {
 
     #[test]
     fn test_icmpv4_echo_response() {
-        // ICMP echo response.
         // Ethernet II + IPv4 + ICMP.
         let packet = [
             0x08, 0x00, 0x20, 0x86, 0x35, 0x4b, 0x00, 0xe0, 0xf7, 0x26, 0x3f, 0xe9, 0x08, 0x00,
@@ -526,7 +551,6 @@ mod tests {
 
     #[test]
     fn test_ipv6_icmpv6() {
-        // ICMPv6 packet.
         // Ethernet II + IPv6 + ICMPv6.
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
@@ -572,7 +596,6 @@ mod tests {
 
     #[test]
     fn test_ipv6_udp_payload() {
-        // UDP packet.
         // Ethernet II + IPv6 + UDP + Payload.
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
@@ -615,8 +638,7 @@ mod tests {
 
     #[test]
     fn test_ipv6_routing_extension_header() {
-        // IPv6 with routing extension header.
-        // Ethernet II + IPv6 + Routing + TCP.
+        // Ethernet II + IPv6 + Routing extension header + TCP.
         let packet = [
             0x86, 0x93, 0x23, 0xd3, 0x37, 0x8e, 0x22, 0x1a, 0x95, 0xd6, 0x7a, 0x23, 0x86, 0xdd,
             0x60, 0x0f, 0xbb, 0x74, 0x00, 0x88, 0x2b, 0x3f, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -666,8 +688,7 @@ mod tests {
 
     #[test]
     fn test_ipv6_hop_by_hop_options() {
-        // IPv6 with hop-by-hop options extension header.
-        // Ethernet II + IPv6 + Hop-by-Hop + TCP.
+        // Ethernet II + IPv6 + Hop-by-Hop Options + TCP.
         let packet = [
             0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
             0x60, 0x00, 0x00, 0x04, 0x00, 0x1c, 0x00, 0x40, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
@@ -712,7 +733,6 @@ mod tests {
 
     #[test]
     fn test_ipv6_destination_options() {
-        // IPv6 with destination options extension header.
         // Ethernet II + IPv6 + Destination Options + TCP.
         let packet = [
             0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
@@ -863,5 +883,78 @@ mod tests {
 
         // Ensure destination options extension header is present.
         assert!(extension_headers.destination_1st.is_some());
+    }
+
+    #[test]
+    pub fn test_ipv6_in_ipv6_with_extension_header() {
+        // Ethernet II + IPv6 + Routing Header (Segment Routing) + IPv6 + TCP.
+        let packet = [
+            0x86, 0x93, 0x23, 0xd3, 0x37, 0x8e, 0x22, 0x1a, 0x95, 0xd6, 0x7a, 0x23, 0x86, 0xdd,
+            0x60, 0x0f, 0xbb, 0x74, 0x00, 0x88, 0x2b, 0x3f, 0xfc, 0x00, 0x00, 0x42, 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xfc, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x29, 0x06,
+            0x04, 0x02, 0x02, 0x00, 0x00, 0x00, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x06,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xfc, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x60, 0x0f,
+            0xbb, 0x74, 0x00, 0x28, 0x06, 0x40, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xfc, 0x00, 0x00, 0x02, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x1f, 0x90, 0xa9, 0xa0,
+            0xba, 0x31, 0x1e, 0x8d, 0x02, 0x1b, 0x63, 0x8d, 0xa0, 0x12, 0x70, 0xf8, 0x8a, 0xf5,
+            0x00, 0x00, 0x02, 0x04, 0x07, 0x94, 0x04, 0x02, 0x08, 0x0a, 0x80, 0x1d, 0xa5, 0x22,
+            0x80, 0x1d, 0xa5, 0x22, 0x01, 0x03, 0x03, 0x07,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+    }
+
+    #[test]
+    pub fn test_ipv6_in_ipv4() {
+        // Ethernet II + IPv4 + IPv6 + ICMPv6.
+        let packet = [
+            0xc2, 0x01, 0x42, 0x02, 0x00, 0x00, 0xc2, 0x00, 0x42, 0x02, 0x00, 0x00, 0x08, 0x00,
+            0x45, 0x00, 0x00, 0x78, 0x00, 0x09, 0x00, 0x00, 0xff, 0x29, 0xa7, 0x51, 0x0a, 0x00,
+            0x00, 0x01, 0x0a, 0x00, 0x00, 0x02, 0x60, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x3a, 0x40,
+            0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x02, 0x80, 0x00, 0x7e, 0x8f, 0x18, 0xdc, 0x00, 0x00, 0x00, 0x01,
+            0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b,
+            0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
+    }
+
+    #[test]
+    fn test_ipv4_in_ipv4() {
+        // Ethernet II + IPv4 + IPv4 + ICMP.
+        let packet = [
+            0xc2, 0x01, 0x57, 0x75, 0x00, 0x00, 0xc2, 0x00, 0x57, 0x75, 0x00, 0x00, 0x08, 0x00,
+            0x45, 0x00, 0x00, 0x78, 0x00, 0x14, 0x00, 0x00, 0xff, 0x04, 0xa7, 0x6b, 0x0a, 0x00,
+            0x00, 0x01, 0x0a, 0x00, 0x00, 0x02, 0x45, 0x00, 0x00, 0x64, 0x00, 0x14, 0x00, 0x00,
+            0xff, 0x01, 0xb5, 0x7f, 0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02, 0x08, 0x00,
+            0x43, 0x05, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x3b, 0x38,
+            0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd,
+            0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd,
+            0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd,
+            0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd,
+            0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd, 0xab, 0xcd,
+        ];
+
+        // Parse the packet.
+        let parser = PacketParser::parse(&packet);
+
+        // Ensure the parser succeeds.
+        assert!(parser.is_ok());
     }
 }

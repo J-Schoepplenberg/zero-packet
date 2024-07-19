@@ -25,6 +25,12 @@ Use `zero-packet` if you are working with raw sockets.
         - Fragment
         - Authentication Header
         - Destination Options (1st and 2nd)
+- IP-in-IP
+    - Encapsulation
+        - IPv4 in IPv4
+        - IPv4 in IPv6
+        - IPv6 in IPv4
+        - IPv6 in IPv6
 - ICMPv4
 - ICMPv6
 - TCP
