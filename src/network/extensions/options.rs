@@ -54,6 +54,12 @@ impl<'a> OptionsHeaderWriter<'a> {
             return Err("Options field must be at least 6 bytes long.");
         }
 
+        let extension_len = self.bytes[1] as usize * 8;
+
+        if extension_len != options.len() {
+            return Err("Options length must match the header extension length.");
+        }
+
         let start_offset = 2;
         let end_offset = start_offset + options.len();
 
@@ -168,8 +174,8 @@ pub mod tests {
 
         // Random values.
         let next_header = 6;
-        let header_ext_len = 1;
-        let options = [1; 7];
+        let header_ext_len = 1; // (header_ext_len + 1) * 8 = 16
+        let options = [1; 8];
 
         // Write the Options extension header.
         let mut writer = OptionsHeaderWriter::new(&mut bytes).unwrap();
@@ -183,7 +189,7 @@ pub mod tests {
         assert_eq!(reader.header_ext_len(), header_ext_len);
         assert_eq!(
             reader.options().unwrap(),
-            &[1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+            &[1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]
         );
     }
 }

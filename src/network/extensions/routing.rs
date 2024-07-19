@@ -36,6 +36,8 @@ impl<'a> RoutingHeaderWriter<'a> {
     /// Sets the header extension length field.
     ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
+    /// 
+    /// E.g. Header length = (header_ext_len + 1) * 8.
     #[inline]
     pub fn set_header_ext_len(&mut self, header_ext_len: u8) {
         self.bytes[1] = header_ext_len;
@@ -68,7 +70,7 @@ impl<'a> RoutingHeaderWriter<'a> {
     ///
     /// The first 4 bytes are reserved with zeroes.
     ///
-    /// If you set data that needs more than 4 bytes, set blocks of 8 bytes.
+    /// If you set data then set blocks of 8 bytes.
     #[inline]
     pub fn set_data(&mut self, data: &[u8]) -> Result<(), &'static str> {
         if data.len() < 4 {
@@ -121,6 +123,8 @@ impl<'a> RoutingHeaderReader<'a> {
     /// Returns the header extension length field.
     ///
     /// Length of the header in 8 bytes, not including the first 8 bytes.
+    /// 
+    /// E.g. Header length = (header_ext_len + 1) * 8.
     #[inline]
     pub fn header_ext_len(&self) -> u8 {
         self.bytes[1]
@@ -213,7 +217,7 @@ pub mod tests {
 
         // Random values.
         let next_header = 6;
-        let header_ext_len = 1;
+        let header_ext_len = 1; // (header_ext_len + 1) * 8 = 16
         let routing_type = 2;
         let segments_left = 3;
         let data = [4, 5, 6, 7, 8, 9, 10, 11];

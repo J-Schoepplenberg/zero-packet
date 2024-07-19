@@ -54,7 +54,7 @@ impl<'a> AuthenticationHeaderWriter<'a> {
 
     /// Sets the Security Parameters Index field.
     ///
-    /// Arbitrary value which is used (together with the destination IP address) to identify the security association of the receiving party.
+    /// Arbitrary value which is used (together with the dest_addr) to identify the security association of the receiving party.
     #[inline]
     pub fn set_spi(&mut self, spi: u32) {
         self.bytes[4] = (spi >> 24) as u8;
@@ -136,7 +136,7 @@ impl<'a> AuthenticationHeaderReader<'a> {
 
     /// Returns the Security Parameters Index field.
     ///
-    /// Arbitrary value which is used (together with the destination IP address) to identify the security association of the receiving party.
+    /// Arbitrary value which is used (together with the dest_addr) to identify the security association of the receiving party.
     #[inline]
     pub fn spi(&self) -> u32 {
         ((self.bytes[4] as u32) << 24)
