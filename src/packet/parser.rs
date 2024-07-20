@@ -51,15 +51,15 @@ impl<'a> PacketParser<'a> {
     /// Determines the protocols encapsulated in some bytes and attempts to parse them.
     #[inline]
     pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
+        let mut parser = Self::new();
+
         let ethernet = EthernetReader::parse(bytes)?;
         let payload = &bytes[ethernet.header_len()..];
 
-        let mut parser = PacketParser::new();
-
         match EtherType::from(ethernet.ethertype()) {
             EtherType::Arp => parser.arp = Some(ArpReader::parse(payload)?),
-            EtherType::Ipv4 => parser.ipv4(payload, true)?,
-            EtherType::Ipv6 => parser.ipv6(payload, true)?,
+            EtherType::Ipv4 => parser.parse_ipv4(payload, true)?,
+            EtherType::Ipv6 => parser.parse_ipv6(payload, true)?,
             _ => (), // Unknown EtherType, proceed.
         }
 
@@ -70,7 +70,7 @@ impl<'a> PacketParser<'a> {
 
     /// Parsing IPv4 packets.
     #[inline]
-    fn ipv4(&mut self, payload: &'a [u8], from_ether: bool) -> Result<(), &'static str> {
+    fn parse_ipv4(&mut self, payload: &'a [u8], from_ether: bool) -> Result<(), &'static str> {
         let ipv4 = IPv4Reader::parse(payload)?;
 
         let payload = ipv4.payload()?;
@@ -89,7 +89,7 @@ impl<'a> PacketParser<'a> {
 
     /// Parsing IPv6 packets.
     #[inline]
-    fn ipv6(&mut self, payload: &'a [u8], from_ether: bool) -> Result<(), &'static str> {
+    fn parse_ipv6(&mut self, payload: &'a [u8], from_ether: bool) -> Result<(), &'static str> {
         let ipv6 = IPv6Reader::parse(payload)?;
 
         let payload = ipv6.upper_layer_payload();
@@ -108,7 +108,7 @@ impl<'a> PacketParser<'a> {
 
     /// Parsing encapsulated protocols.
     #[inline]
-    fn parse_protocol<T: IpReader<'a>>(
+    fn parse_protocol<T: VerifyReader<'a>>(
         &mut self,
         protocol: IpProtocol,
         payload: &'a [u8],
@@ -131,8 +131,8 @@ impl<'a> PacketParser<'a> {
                 self.icmpv6 = Some(Icmpv6Reader::parse(payload)?);
                 reader.verify_checksum()?;
             }
-            IpProtocol::Ipv4 => self.ipv4(payload, false)?,
-            IpProtocol::Ipv6 => self.ipv6(payload, false)?,
+            IpProtocol::Ipv4 => self.parse_ipv4(payload, false)?,
+            IpProtocol::Ipv6 => self.parse_ipv6(payload, false)?,
             _ => (), // Unknown protocol, proceed.
         }
 
@@ -141,7 +141,7 @@ impl<'a> PacketParser<'a> {
 }
 
 /// Trait to parse a protocol header.
-pub trait Parse<'a>: Sized {
+pub trait ParseReader<'a>: Sized {
     /// Parses the protocol header from the given slice.
     ///
     /// Checks certain fields for validity.
@@ -150,7 +150,7 @@ pub trait Parse<'a>: Sized {
     fn parse(bytes: &'a [u8]) -> Result<Self, &'static str>;
 }
 
-impl<'a> Parse<'a> for EthernetReader<'a> {
+impl<'a> ParseReader<'a> for EthernetReader<'a> {
     /// Parses an Ethernet frame from a byte slice.
     ///
     /// Validates that the byte slice is at least the minimum Ethernet frame length.
@@ -164,7 +164,7 @@ impl<'a> Parse<'a> for EthernetReader<'a> {
     }
 }
 
-impl<'a> Parse<'a> for ArpReader<'a> {
+impl<'a> ParseReader<'a> for ArpReader<'a> {
     /// Parses an ARP packet from a byte slice.
     ///
     /// Validates the ARP operation field.
@@ -180,7 +180,7 @@ impl<'a> Parse<'a> for ArpReader<'a> {
     }
 }
 
-impl<'a> Parse<'a> for IPv4Reader<'a> {
+impl<'a> ParseReader<'a> for IPv4Reader<'a> {
     /// Parses an IPv4 packet from a byte slice.
     ///
     /// Validates the IPv4 version, header length, total length, and checksum fields.
@@ -212,7 +212,7 @@ impl<'a> Parse<'a> for IPv4Reader<'a> {
     }
 }
 
-impl<'a> Parse<'a> for IPv6Reader<'a> {
+impl<'a> ParseReader<'a> for IPv6Reader<'a> {
     /// Parses an IPv6 packet from a byte slice.
     ///
     /// Validates the IPv6 version field.
@@ -230,7 +230,7 @@ impl<'a> Parse<'a> for IPv6Reader<'a> {
     }
 }
 
-impl<'a> Parse<'a> for TcpReader<'a> {
+impl<'a> ParseReader<'a> for TcpReader<'a> {
     /// Parses a TCP segment from a byte slice.
     ///
     /// Validates the TCP header length and flags fields.
@@ -250,7 +250,7 @@ impl<'a> Parse<'a> for TcpReader<'a> {
     }
 }
 
-impl<'a> Parse<'a> for UdpReader<'a> {
+impl<'a> ParseReader<'a> for UdpReader<'a> {
     /// Parses a UDP datagram from a byte slice.
     ///
     /// Validates the UDP length field against the actual length of the datagram.
@@ -266,7 +266,7 @@ impl<'a> Parse<'a> for UdpReader<'a> {
     }
 }
 
-impl<'a> Parse<'a> for Icmpv4Reader<'a> {
+impl<'a> ParseReader<'a> for Icmpv4Reader<'a> {
     /// Parses an ICMPv4 message from a byte slice.
     ///
     /// Validates the ICMPv4 type and code fields.
@@ -286,7 +286,7 @@ impl<'a> Parse<'a> for Icmpv4Reader<'a> {
     }
 }
 
-impl<'a> Parse<'a> for Icmpv6Reader<'a> {
+impl<'a> ParseReader<'a> for Icmpv6Reader<'a> {
     /// Parses an ICMPv6 message from a byte slice.
     ///
     /// Validates the ICMPv6 type field.
@@ -303,12 +303,12 @@ impl<'a> Parse<'a> for Icmpv6Reader<'a> {
 }
 
 /// Trait to verify the checksum of protocols encapsulated in IP packets.
-pub trait IpReader<'a> {
+pub trait VerifyReader<'a> {
     /// Verifies the checksum of the encapsulated protocol.
     fn verify_checksum(&self) -> Result<(), &'static str>;
 }
 
-impl<'a> IpReader<'a> for IPv4Reader<'a> {
+impl<'a> VerifyReader<'a> for IPv4Reader<'a> {
     /// Verifies the checksum of an encapsulated protocol in an IPv4 packet.
     ///
     /// Computes the pseudo-header checksum and verifies it with the encapsulated payload.
@@ -333,7 +333,7 @@ impl<'a> IpReader<'a> for IPv4Reader<'a> {
     }
 }
 
-impl<'a> IpReader<'a> for IPv6Reader<'a> {
+impl<'a> VerifyReader<'a> for IPv6Reader<'a> {
     /// Verifies the checksum of an encapsulated protocol in an IPv6 packet.
     ///
     /// Computes the pseudo-header checksum and verifies it with the encapsulated payload.

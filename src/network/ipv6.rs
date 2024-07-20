@@ -1,5 +1,5 @@
 use super::extensions::headers::ExtensionHeaders;
-use crate::misc::{bytes_to_ipv6, NextHeader};
+use crate::misc::bytes_to_ipv6;
 use core::{fmt, str::from_utf8};
 
 /// The length of an IPv6 header in bytes.
@@ -156,10 +156,10 @@ impl<'a> IPv6Reader<'a> {
         };
 
         // Constructs a struct containing all extension headers, if there are any.
-        let extension_headers = ExtensionHeaders::new(reader.payload(), reader.next_header())?;
+        let extension_headers = ExtensionHeaders::parse(reader.payload(), reader.next_header())?;
 
         if let Some(extension_headers) = extension_headers {
-            reader.extension_headers_len = extension_headers.total_header_len();
+            reader.extension_headers_len = extension_headers.total_headers_len;
             reader.extension_headers = Some(extension_headers);
         }
 
@@ -210,60 +210,19 @@ impl<'a> IPv6Reader<'a> {
         self.bytes[6]
     }
 
-    /// Returns the next header field of the final extension header.
+    /// Returns the final next header field, which is the encapsulated protocol.
     ///
-    /// The extension headers are linked in a chain through the next header field.
+    /// If there are extension headers, the chain is looped to retrieve the last header.
     ///
-    /// If there are no extension headers, the next header field of the IPv6 header is returned.
+    /// Otherwise, the next header field of the IPv6 header is returned.
     #[inline]
     pub fn final_next_header(&self) -> u8 {
-        // Start with the next header field in the most outer IPv6 header.
+        // Start with the first next header field in the most outer IPv6 header.
         let mut next_header = self.next_header();
 
-        // Loop through the chain of extension headers.
+        // Retrieve the last next header in the chain.
         if let Some(extension_headers) = &self.extension_headers {
-            loop {
-                match NextHeader::from(next_header) {
-                    NextHeader::HopByHop => {
-                        if let Some(hop_by_hop) = &extension_headers.hop_by_hop {
-                            next_header = hop_by_hop.next_header();
-                        } else {
-                            break;
-                        }
-                    }
-                    NextHeader::Routing => {
-                        if let Some(routing) = &extension_headers.routing {
-                            next_header = routing.next_header();
-                        } else {
-                            break;
-                        }
-                    }
-                    NextHeader::Fragment => {
-                        if let Some(fragment) = &extension_headers.fragment {
-                            next_header = fragment.next_header();
-                        } else {
-                            break;
-                        }
-                    }
-                    NextHeader::AuthHeader => {
-                        if let Some(auth_header) = &extension_headers.auth_header {
-                            next_header = auth_header.next_header();
-                        } else {
-                            break;
-                        }
-                    }
-                    NextHeader::Destination => {
-                        if let Some(destination) = &extension_headers.destination_1st {
-                            next_header = destination.next_header();
-                        } else if let Some(destination) = &extension_headers.destination_2nd {
-                            next_header = destination.next_header();
-                        } else {
-                            break;
-                        }
-                    }
-                    _ => break,
-                }
-            }
+            next_header = extension_headers.final_next_header;
         }
 
         // Return the final next header in the chain.

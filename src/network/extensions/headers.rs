@@ -23,139 +23,192 @@ pub struct ExtensionHeaders<'a> {
     pub auth_header: Option<AuthenticationHeaderReader<'a>>,
     pub destination_1st: Option<OptionsHeaderReader<'a>>,
     pub destination_2nd: Option<OptionsHeaderReader<'a>>,
+    pub total_headers_len: usize,
+    pub final_next_header: u8,
 }
 
 impl<'a> ExtensionHeaders<'a> {
-    /// Parses the extension headers from the given byte slice.
-    ///
-    /// They are chained together through the next header field.
-    ///
-    /// Thus, we need to loop through them all to run down the chain.
+    /// Creates a new `ExtensionHeaders`.
     #[inline]
-    pub fn new(bytes: &'a [u8], next_header: u8) -> Result<Option<Self>, &'static str> {
-        let mut next_header = next_header;
-        let mut bytes = bytes;
-
-        let mut headers = Self {
+    fn new() -> Self {
+        Self {
             hop_by_hop: None,
             routing: None,
             fragment: None,
             auth_header: None,
             destination_1st: None,
             destination_2nd: None,
-        };
+            total_headers_len: 0,
+            final_next_header: 0,
+        }
+    }
+    /// Parses the extension headers from the given byte slice.
+    ///
+    /// They are chained together through the next header field.
+    ///
+    /// Thus, we need to loop through them all to run down the chain.
+    #[inline]
+    pub fn parse(bytes: &'a [u8], next_header: u8) -> Result<Option<Self>, &'static str> {
+        let mut headers = Self::new();
 
-        loop {
-            match NextHeader::from(next_header) {
-                NextHeader::HopByHop => {
-                    if headers.hop_by_hop.is_some() {
-                        break;
-                    }
+        let mut current_header = next_header;
+        let mut current_bytes = bytes;
 
-                    if headers.routing.is_some()
-                        || headers.fragment.is_some()
-                        || headers.destination_1st.is_some()
-                        || headers.destination_2nd.is_some()
-                    {
-                        return Err("If Hop-by-Hop Options is present, then it must be the first extension header.");
-                    }
-
-                    let reader = OptionsHeaderReader::new(bytes)?;
-                    next_header = reader.next_header();
-                    bytes = reader.payload()?;
-                    headers.hop_by_hop = Some(reader);
-                }
-                NextHeader::Routing => {
-                    if headers.routing.is_some() {
-                        break;
-                    }
-
-                    let reader = RoutingHeaderReader::new(bytes)?;
-                    next_header = reader.next_header();
-                    bytes = reader.payload()?;
-                    headers.routing = Some(reader);
-                }
-                NextHeader::Fragment => {
-                    if headers.fragment.is_some() {
-                        break;
-                    }
-
-                    let reader = FragmentHeaderReader::new(bytes)?;
-                    next_header = reader.next_header();
-                    bytes = reader.payload();
-                    headers.fragment = Some(reader);
-                }
-                NextHeader::AuthHeader => {
-                    if headers.auth_header.is_some() {
-                        break;
-                    }
-
-                    let reader = AuthenticationHeaderReader::new(bytes)?;
-                    next_header = reader.next_header();
-                    bytes = reader.payload()?;
-                    headers.auth_header = Some(reader);
-                }
-                NextHeader::Destination => {
-                    if headers.destination_2nd.is_some() {
-                        break;
-                    }
-
-                    let reader = OptionsHeaderReader::new(bytes)?;
-                    next_header = reader.next_header();
-                    bytes = reader.payload()?;
-
-                    if headers.destination_1st.is_none() {
-                        headers.destination_1st = Some(reader);
-                    } else {
-                        headers.destination_2nd = Some(reader);
-                    }
-                }
-                // We escape the loop if we don't recognize the next header.
-                _ => break,
-            }
+        while let Some((next_header, payload)) =
+            headers.parse_next_header(current_header, current_bytes)?
+        {
+            current_header = next_header;
+            current_bytes = payload;
         }
 
-        if headers.hop_by_hop.is_none()
-            && headers.routing.is_none()
-            && headers.fragment.is_none()
-            && headers.auth_header.is_none()
-            && headers.destination_1st.is_none()
-        {
+        if headers.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(headers))
+        }
+    }
+
+    /// Parses the next extension header.
+    #[inline]
+    fn parse_next_header(
+        &mut self,
+        next_header: u8,
+        bytes: &'a [u8],
+    ) -> Result<Option<(u8, &'a [u8])>, &'static str> {
+        match NextHeader::from(next_header) {
+            NextHeader::HopByHop => self.parse_hop_by_hop_options(bytes),
+            NextHeader::Routing => self.parse_routing_header(bytes),
+            NextHeader::Fragment => self.parse_fragment_header(bytes),
+            NextHeader::AuthHeader => self.parse_auth_header(bytes),
+            NextHeader::Destination => self.parse_destination_options(bytes),
+            _ => Ok(None),
+        }
+    }
+
+    /// Parses the Hop-by-Hop Options extension header.
+    #[inline]
+    fn parse_hop_by_hop_options(
+        &mut self,
+        bytes: &'a [u8],
+    ) -> Result<Option<(u8, &'a [u8])>, &'static str> {
+        if self.hop_by_hop.is_some() {
             return Ok(None);
         }
 
-        Ok(Some(headers))
+        if !self.is_empty() {
+            return Err(
+                "If Hop-by-Hop Options is present, then it must be the first extension header.",
+            );
+        }
+
+        let reader = OptionsHeaderReader::new(bytes)?;
+        let next_header = reader.next_header();
+        let payload = reader.payload()?;
+
+        self.total_headers_len += reader.header_len();
+        self.final_next_header = next_header;
+        self.hop_by_hop = Some(reader);
+
+        Ok(Some((next_header, payload)))
     }
 
-    /// Returns the total length of all present extension headers.
+    /// Parses the Routing extension header.
     #[inline]
-    pub fn total_header_len(&self) -> usize {
-        let mut total_len = 0;
-
-        if let Some(hop_by_hop) = &self.hop_by_hop {
-            total_len += hop_by_hop.header_len();
+    fn parse_routing_header(
+        &mut self,
+        bytes: &'a [u8],
+    ) -> Result<Option<(u8, &'a [u8])>, &'static str> {
+        if self.routing.is_some() {
+            return Ok(None);
         }
 
-        if let Some(routing) = &self.routing {
-            total_len += routing.header_len();
+        let reader = RoutingHeaderReader::new(bytes)?;
+        let next_header = reader.next_header();
+        let payload = reader.payload()?;
+
+        self.total_headers_len += reader.header_len();
+        self.final_next_header = next_header;
+        self.routing = Some(reader);
+
+        Ok(Some((next_header, payload)))
+    }
+
+    /// Parses the Fragment extension header.
+    #[inline]
+    fn parse_fragment_header(
+        &mut self,
+        bytes: &'a [u8],
+    ) -> Result<Option<(u8, &'a [u8])>, &'static str> {
+        if self.fragment.is_some() {
+            return Ok(None);
         }
 
-        if let Some(fragment) = &self.fragment {
-            total_len += fragment.header_len();
+        let reader = FragmentHeaderReader::new(bytes)?;
+        let next_header = reader.next_header();
+        let payload = reader.payload();
+
+        self.total_headers_len += reader.header_len();
+        self.final_next_header = next_header;
+        self.fragment = Some(reader);
+
+        Ok(Some((next_header, payload)))
+    }
+
+    /// Parses the Authentication Header extension header.
+    #[inline]
+    fn parse_auth_header(
+        &mut self,
+        bytes: &'a [u8],
+    ) -> Result<Option<(u8, &'a [u8])>, &'static str> {
+        if self.auth_header.is_some() {
+            return Ok(None);
         }
 
-        if let Some(auth_header) = &self.auth_header {
-            total_len += auth_header.header_len();
+        let reader = AuthenticationHeaderReader::new(bytes)?;
+        let next_header = reader.next_header();
+        let payload = reader.payload()?;
+
+        self.total_headers_len += reader.header_len();
+        self.final_next_header = next_header;
+        self.auth_header = Some(reader);
+
+        Ok(Some((next_header, payload)))
+    }
+
+    /// Parses the Destination Options extension header.
+    #[inline]
+    fn parse_destination_options(
+        &mut self,
+        bytes: &'a [u8],
+    ) -> Result<Option<(u8, &'a [u8])>, &'static str> {
+        if self.destination_2nd.is_some() {
+            return Ok(None);
         }
 
-        if let Some(destination) = &self.destination_1st {
-            total_len += destination.header_len();
+        let reader = OptionsHeaderReader::new(bytes)?;
+        let next_header = reader.next_header();
+        let payload = reader.payload()?;
+
+        self.total_headers_len += reader.header_len();
+        self.final_next_header = next_header;
+
+        if self.destination_1st.is_none() {
+            self.destination_1st = Some(reader);
+        } else {
+            self.destination_2nd = Some(reader);
         }
 
-        if let Some(destination) = &self.destination_2nd {
-            total_len += destination.header_len();
-        }
+        Ok(Some((next_header, payload)))
+    }
 
-        total_len
+    /// Returns if no extension headers are present.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.hop_by_hop.is_none()
+            && self.routing.is_none()
+            && self.fragment.is_none()
+            && self.auth_header.is_none()
+            && self.destination_1st.is_none()
+            && self.destination_2nd.is_none()
     }
 }
