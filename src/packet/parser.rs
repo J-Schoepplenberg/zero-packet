@@ -366,7 +366,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_frame_too_short() {
+    fn parse_frame_too_short() {
         // Raw packet data. A valid Ethernet frame needs at least 64 bytes.
         let packet = [
             4, 180, 254, 154, 129, 199, 52, 151, 246, 148, 2, 15, 8, 0, 53, 143, 48, 57, 212, 49,
@@ -382,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vlan_tagged_frame() {
+    fn vlan_tagged_frame() {
         // Ethernet II + IPv4 (VLAN tagged) + UDP.
         let packet = [
             // Ethernet header.
@@ -442,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn test_double_vlan_tagged_frame() {
+    fn double_vlan_tagged_frame() {
         // Ethernet II + IPv4 (double VLAN tagged) + UDP.
         let packet = [
             // Ethernet header.
@@ -506,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn test_icmpv4_echo_response() {
+    fn icmpv4_echo_response() {
         // Ethernet II + IPv4 + ICMP.
         let packet = [
             0x08, 0x00, 0x20, 0x86, 0x35, 0x4b, 0x00, 0xe0, 0xf7, 0x26, 0x3f, 0xe9, 0x08, 0x00,
@@ -550,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ipv6_icmpv6() {
+    fn ipv6_icmpv6() {
         // Ethernet II + IPv6 + ICMPv6.
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
@@ -595,7 +595,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ipv6_udp_payload() {
+    fn ipv6_udp_payload() {
         // Ethernet II + IPv6 + UDP + Payload.
         let packet = [
             0x00, 0x60, 0x97, 0x07, 0x69, 0xea, 0x00, 0x00, 0x86, 0x05, 0x80, 0xda, 0x86, 0xdd,
@@ -637,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ipv6_routing_extension_header() {
+    fn ipv6_routing_extension_header() {
         // Ethernet II + IPv6 + Routing extension header + TCP.
         let packet = [
             0x86, 0x93, 0x23, 0xd3, 0x37, 0x8e, 0x22, 0x1a, 0x95, 0xd6, 0x7a, 0x23, 0x86, 0xdd,
@@ -687,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ipv6_hop_by_hop_options() {
+    fn ipv6_hop_by_hop_options() {
         // Ethernet II + IPv6 + Hop-by-Hop Options + TCP.
         let packet = [
             0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
@@ -732,7 +732,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ipv6_destination_options() {
+    fn ipv6_destination_options() {
         // Ethernet II + IPv6 + Destination Options + TCP.
         let packet = [
             0x44, 0x2a, 0x60, 0xf6, 0x27, 0x8a, 0x00, 0x0c, 0x29, 0x30, 0x76, 0xb5, 0x86, 0xdd,
@@ -777,7 +777,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fragment_and_authentication_header() {
+    fn fragment_and_authentication_header() {
         // IPv6 with fragment extension header and ICMPv6.
         let pkt1 = [
             0x70, 0x77, 0x81, 0xdd, 0xc3, 0x7c, 0x00, 0x26, 0x9e, 0x71, 0x9d, 0x33, 0x86, 0xdd,
@@ -824,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extension_headers_chained() {
+    fn extension_headers_chained() {
         // IPv6 with extension headers chained together.
         // Ethernet II + IPv6 + Hop-by-Hop + Destination + NoNextHeader.
         let packet = [
@@ -886,7 +886,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_ipv6_in_ipv6_with_extension_header() {
+    pub fn ipv6_in_ipv6_with_extension_header() {
         // Ethernet II + IPv6 + Routing Header (Segment Routing) + IPv6 + TCP.
         let packet = [
             0x86, 0x93, 0x23, 0xd3, 0x37, 0x8e, 0x22, 0x1a, 0x95, 0xd6, 0x7a, 0x23, 0x86, 0xdd,
@@ -913,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_ipv6_in_ipv4() {
+    pub fn ipv6_in_ipv4() {
         // Ethernet II + IPv4 + IPv6 + ICMPv6.
         let packet = [
             0xc2, 0x01, 0x42, 0x02, 0x00, 0x00, 0xc2, 0x00, 0x42, 0x02, 0x00, 0x00, 0x08, 0x00,
@@ -936,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ipv4_in_ipv4() {
+    fn ipv4_in_ipv4() {
         // Ethernet II + IPv4 + IPv4 + ICMP.
         let packet = [
             0xc2, 0x01, 0x57, 0x75, 0x00, 0x00, 0xc2, 0x00, 0x57, 0x75, 0x00, 0x00, 0x08, 0x00,

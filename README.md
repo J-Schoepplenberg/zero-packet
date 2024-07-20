@@ -6,11 +6,13 @@
 
 Super simple library to efficiently build and parse network packets in-place with zero overhead.
 
-No async, no allocations, no dependencies, no macros, no std, no unsafe. It simply cannot be easier.
+No async, no allocations, no dependencies, no std, no unsafe. It simply cannot be easier.
 
-Use `zero-packet` if you are working with raw sockets.
+Use `zero-packet` if you are working with raw sockets, low-level networking, or something similar.
 
 ## Supported
+
+You can build and parse a wide variety of packets of arbitrary complexity.
 
 - Ethernet II
     - Optional
@@ -50,7 +52,7 @@ Or add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-zero-packet = "0.0.9"
+zero-packet = "0.1.0"
 ```
 
 ### PacketBuilder
@@ -60,14 +62,14 @@ If you want to create network packets manually and efficiently, look no further.
 ```Rust
 // Raw packet that we will mutate in-place.
 // Ethernet header (14 bytes) + IPv4 header (20 bytes) + UDP header (8 bytes) = 42 bytes.
-let mut buffer = [0u8; 53]
+let mut buffer = [0u8; 64]
 
 // Some random payload (11 bytes).
 let payload = b"Hello, UDP!";
 
 // PacketBuilder is a zero-copy packet builder.
-// Using the typestate pattern, a state machine is implemented using the type system.
-// The state machine ensures that the package is built correctly.
+// Using the typestate pattern, a state machine is implemented at compile-time.
+// The state machine ensures that the package is built structurally correct.
 let mut packet_builder = PacketBuilder::new(&mut buffer);
 
 // Sets Ethernet, IPv4 and UDP header fields.
@@ -90,8 +92,7 @@ Parsing any received byte slice for which we don't know ahead of time what type 
 let packet = [..];
 
 // PacketParser is a zero-copy packet parser.
-// The `parse` method determines on its own what protocol headers are present.
-// The method is strict about what input it accepts and validates certain fields.
+// The `parse` method recognizes which protocol headers are present.
 let parsed = PacketParser::parse(&packet)?;
 
 // Now it is as easy as this.

@@ -217,7 +217,7 @@ pub mod tests {
     use super::*;
 
     #[test]
-    fn test_getters_and_setters() {
+    fn getters_and_setters() {
         // Raw packet.
         let mut bytes = [0; 20];
 

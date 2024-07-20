@@ -73,21 +73,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_checksum_zeros() {
+    fn checksum_zeros() {
         let data = [0u8; 8];
         let checksum = internet_checksum(&data, 0);
         assert_eq!(checksum, 65535);
     }
 
     #[test]
-    fn test_checksum_non_zeros() {
+    fn checksum_non_zeros() {
         let data = [255u8; 8];
         let checksum = internet_checksum(&data, 0);
         assert_eq!(checksum, 0);
     }
 
     #[test]
-    fn test_checksum_so() {
+    fn checksum_so() {
         let data = [
             0x45, 0x00, 0x00, 0x34, 0x5f, 0x7c, 0x40, 0x00, 0x40, 0x06, 0xc0, 0xa8, 0xb2, 0x14,
             0xc6, 0xfc, 0xce, 0x19,
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn test_checksum_wkpda() {
+    fn checksum_wkpda() {
         let data = [
             0x45, 0x00, 0x00, 0x73, 0x00, 0x00, 0x40, 0x00, 0x40, 0x11, 0xc0, 0xa8, 0x00, 0x01,
             0xc0, 0xa8, 0x00, 0xc7,
@@ -107,14 +107,14 @@ mod tests {
     }
 
     #[test]
-    fn test_checksum_nf() {
+    fn checksum_nf() {
         let data = [0x01, 0x00, 0xf2, 0x03, 0xf4, 0xf5, 0xf6, 0xf7];
         let checksum = internet_checksum(&data, 0);
         assert_eq!(checksum, 0x210e);
     }
 
     #[test]
-    fn test_verify_checksum() {
+    fn verify_checksum() {
         let data = [
             0x45, 0x00, 0x00, 0x73, 0x00, 0x00, 0x40, 0x00, 0x40, 0x11, 0xb8, 0x61, 0xc0, 0xa8,
             0x00, 0x01, 0xc0, 0xa8, 0x00, 0xc7,
@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pseudo_header() {
+    fn pseudo_sum() {
         let src_ip = [192, 168, 0, 1];
         let dest_ip = [192, 168, 0, 199];
         let protocol = 6;
