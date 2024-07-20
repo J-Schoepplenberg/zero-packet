@@ -212,20 +212,17 @@ impl<'a> IPv6Reader<'a> {
 
     /// Returns the final next header field, which is the encapsulated protocol.
     ///
-    /// If there are extension headers, the chain is looped to retrieve the last header.
+    /// If there are extension headers, the last next header in the chain is returned.
     ///
     /// Otherwise, the next header field of the IPv6 header is returned.
     #[inline]
     pub fn final_next_header(&self) -> u8 {
-        // Start with the first next header field in the most outer IPv6 header.
         let mut next_header = self.next_header();
 
-        // Retrieve the last next header in the chain.
         if let Some(extension_headers) = &self.extension_headers {
             next_header = extension_headers.final_next_header;
         }
 
-        // Return the final next header in the chain.
         next_header
     }
 
